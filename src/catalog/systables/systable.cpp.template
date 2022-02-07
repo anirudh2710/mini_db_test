@@ -1,0 +1,48 @@
+#include "tdb.h"
+
+#include "catalog/systables/@TABLENAME@.h"
+
+#include "utils/typsupp/varchar.h"
+
+namespace taco {
+
+// absl::string_view requires an additional cast to std::string
+#define VARCHAR_TO_STRING(x) cast_as_string(varchar_to_string_view(x))
+
+#ifdef ALWAYS_USE_FIXEDLEN_DATAPAGE
+// utils/typsupp/varchar.cpp will define an internal_varchar_from_string_view()
+// if we only have fixed-length data page. It copies the content in the string
+// view into a VARCHAR-typed datum.
+Datum internal_varchar_from_string_view(absl::string_view str, uint64_t n);
+
+#define STRING_TO_VARCHAR(x) internal_varchar_from_string_view(x, NAMELEN)
+
+
+#else
+
+// We can do this without copying the string only because we require the caller
+// to keep the systable entry alive in order to access the returned datum.
+#define STRING_TO_VARCHAR(x) Datum::FromVarlenAsStringView(x)
+
+#endif
+
+SysTable_@TABLENAME@*
+SysTable_@TABLENAME@::Create(const std::vector<Datum> &data) {
+@@FIELD@@    auto &&@COLNAME@ = data[@FIELD_ID@].@DATUM_GETTER@();
+@@
+    return new SysTable_@TABLENAME@(
+@@FIELD@@        @DATUM_TRANSFORM@(@COLNAME@) @COMMA_OPT@
+@@
+    );
+}
+
+std::vector<Datum>
+SysTable_@TABLENAME@::GetDatumVector() const {
+    std::vector<Datum> ret;
+    ret.reserve(@NUM_FIELDS@);
+@@FIELD@@    ret.emplace_back(@DATUM_CREATOR@(@COLNAME@()));
+@@
+    return ret;
+}
+
+}   // namespace taco

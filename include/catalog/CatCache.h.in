@@ -1,0 +1,22 @@
+#ifndef CATALOG_CATCACHE_H
+#define CATALOG_CATCACHE_H
+
+#include "tdb.h"
+
+#include "@CATALOG_CACHE_HEADER@"
+
+namespace taco {
+
+typedef @CATALOG_CACHE_CLASS@ CatCacheImpl;
+
+/*!
+ * Catcache is the catalog cache class as configured in the top-level
+ * CMakeLists.txt. This can't be a typedef unfortunately, because we have to
+ * use forward declaration of CatCache in dbmain/Database.h to avoid circular
+ * references. See dbmain/Database.h for details.
+ */
+class CatCache: public @CATALOG_CACHE_CLASS@ {};
+
+}   // namespace taco
+
+#endif  // CATALOG_CATCACHE_H
