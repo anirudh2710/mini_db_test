@@ -1,0 +1,10 @@
+DEFINE_SYSTABLE(Column, 3, "stores all columns in TDB")
+DEFINE_SYSTABLE_FIELD(OID, coltabid, "table ID")
+DEFINE_SYSTABLE_FIELD(INT2, colid, "column number (counting from 0 for ordinary columns)")
+DEFINE_SYSTABLE_FIELD(BOOL, colisarray, "whether this is an array column")
+DEFINE_SYSTABLE_FIELD(BOOL, colisnullable, "whether this can be NULL value")
+DEFINE_SYSTABLE_FIELD(OID, coltypid, "the type ID")
+DEFINE_SYSTABLE_FIELD(UINT8, coltypparam, "the type parameter if any or 0 if there is no type parameter")
+DEFINE_SYSTABLE_FIELD(VARCHAR(NAMELEN), colname, "column name")
+
+DEFINE_SYSTABLE_INDEX(Column, true, coltabid, colid)

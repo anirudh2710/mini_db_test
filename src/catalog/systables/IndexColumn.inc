@@ -1,0 +1,11 @@
+DEFINE_SYSTABLE(IndexColumn, 8, "stores the key columns of all the indexes")
+DEFINE_SYSTABLE_FIELD(OID, idxcolidxid, "the index ID")
+DEFINE_SYSTABLE_FIELD(INT2, idxcolid, "the key column number in the index (counting from 0)")
+DEFINE_SYSTABLE_FIELD(INT2, idxcoltabcolid, "the column number in the indexed table")
+DEFINE_SYSTABLE_FIELD(OID, idxcoltypid, "the type id of the key column in the index")
+DEFINE_SYSTABLE_FIELD(BOOL, idxcolisnullable, "whether this key column can be NULL")
+DEFINE_SYSTABLE_FIELD(UINT8, idxcoltypparam, "the type parameter of this key column")
+DEFINE_SYSTABLE_FIELD(OID, idxcoleqfuncid, "the = operator function id")
+DEFINE_SYSTABLE_FIELD(OID, idxcolltfuncid, "the < operator function id")
+
+DEFINE_SYSTABLE_INDEX(IndexColumn, true, idxcolidxid, idxcolid)
