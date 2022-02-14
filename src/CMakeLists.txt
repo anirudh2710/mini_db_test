@@ -18,6 +18,8 @@ add_subdirectory(dbmain)
 
 add_subdirectory(query)
 
+add_subdirectory(storage)
+
 add_subdirectory(utils)
 
 add_subdirectory(index)
