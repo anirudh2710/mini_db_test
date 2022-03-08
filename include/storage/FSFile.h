@@ -111,7 +111,36 @@ public:
     void Flush();
 
 private:
-    // TODO implement it
+    FSFile(const std::string &path, int fd, size_t flen, bool o_direct):
+        m_path(path),
+        m_o_direct(o_direct),
+        m_fd(fd),
+        m_flen(flen) {}
+
+    /*!
+     * Reads \p count bytes from the file at the \p offset into the buffer \p
+     * buf. This private function does not need to check whether the parameters
+     * are in range. Any error other than partial writes or interrupted syscall
+     * shall be treated as a fatal error.
+     *
+     * This function should be thread-safe.
+     */
+    void ReadImpl(void *buf, size_t count, off_t offset);
+
+    /*!
+     * Writes \p count bytes from the buffer \p buf into the file at the \p
+     * offset. This private function does not need to check whether the
+     * parameters are in range. Any error other than partial writes or
+     * interrupted syscall shall be treated as a fatal error.
+     *
+     * This function should be thread-safe.
+     */
+    void WriteImpl(const void *buf, size_t count, off_t offset);
+
+    std::string     m_path;
+    bool            m_o_direct;
+    int             m_fd;
+    atomic_size_t   m_flen;
 };
 
 /*!
