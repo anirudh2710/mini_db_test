@@ -10,6 +10,16 @@
 
 namespace taco {
 
+
+    struct meta_info
+	{
+  		int pageNo;
+  		bool dirty;
+		int pinCount;
+        int sc;
+	};
+
+
 struct BufferUnpin {
     void operator()(BufferId bufid);
 };
@@ -205,6 +215,8 @@ public:
     char* GetBuffer(BufferId bufid) const;
 
 private:
+
+
     /*!
      * Flushes all dirty page back to disk. If there's still some page with
      * a non-zero pin count, it throws a fatal error.
@@ -215,6 +227,15 @@ private:
     void Flush();
 
     // TODO add your own members and member functions
+    //bool dirtyFlag;
+    std::unordered_map<int, int> umap;
+    char *bufferpool;
+    char *indexPointer;
+    int ind;
+    unsigned int bufferSize;
+    int clockpointer;
+    meta_info *minfo;
+    int secondChance;
 };
 
 }   // namespace taco
