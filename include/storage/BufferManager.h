@@ -228,14 +228,15 @@ private:
 
     // TODO add your own members and member functions
     //bool dirtyFlag;
+    int temp2;
+    int temp;
     std::unordered_map<int, int> umap;
     char *bufferpool;
     char *indexPointer;
-    int ind;
     unsigned int bufferSize;
     int clockpointer;
-    meta_info *minfo;
-    int secondChance;
+    meta_info *info;
+
 };
 
 }   // namespace taco

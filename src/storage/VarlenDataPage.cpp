@@ -83,7 +83,7 @@ namespace taco {
     VarlenDataPage::InitializePage(char *pagebuf, FieldOffset usr_data_sz) {
         FieldOffset headerSize = MAXALIGN(VarlenDataPageHeaderSize+usr_data_sz);
         if( headerSize >= PAGE_SIZE){
-            LOG(kError, "No space for records since user data size is huge");
+            LOG(kError, "No space");
             return;
         }
         header = ((struct VarlenDataPageHeader*)pagebuf);
@@ -93,7 +93,6 @@ namespace taco {
         header->m_nslots = 0;
         header->m_fs_begin =headerSize;
         firstFreeSlotId = 0;
-        //m_obj = new VarlenDataPage(pagebuf, usr_data_sz);
     }
 
 
@@ -129,7 +128,6 @@ namespace taco {
         CheckSID(sid);
         SlotData *slotData = (SlotData*)(m_pagebuf+PAGE_SIZE-sizeof(SlotData)*sid);
         char *temp = (char*)malloc(slotData->m_len);
-        //memcpy((char*)temp, (char*)(m_pagebuf+slotData->m_off), slotData->m_len);
         if(p_len!=nullptr)
             *p_len = slotData->m_len;
         return (char*)(m_pagebuf+slotData->m_off);
@@ -157,19 +155,12 @@ namespace taco {
             if (slot.IsValid())
                 slotPtrs.push(&slot);
         }
-
         FieldOffset offset = pagebuff->m_ph_sz;
-
-        // move records
         while (!slotPtrs.empty()) {
             SlotData* slot = slotPtrs.top();
             slotPtrs.pop();
-
-            // nothing to move, if the record length is 0 bytes
             if (slot->m_len == 0)
                 continue;
-
-            // move the data
             memmove((void*)pagebuff+offset, (void*)pagebuff+slot->m_off, slot->m_len);
             slot->m_off = offset;
             offset = MAXALIGN(offset+slot->m_len);
@@ -259,7 +250,6 @@ namespace taco {
         if(sid>pagebuff->m_nslots) return false;
         SlotData *slotData = (SlotData*)(m_pagebuf+PAGE_SIZE-sizeof(SlotData)*sid);
         if(slotData->m_off==0) return false;
-        //memset(pagebuff+slotData->m_off, 0, slotData->m_len);
         slotData->m_off=0;
         slotData->m_len=0;
         pagebuff->m_cnt--;
@@ -281,12 +271,11 @@ namespace taco {
         } 
         SlotData *slotData = (SlotData*)(m_pagebuf+PAGE_SIZE-sizeof(SlotData)*sid);
         if(!slotData->IsValid()){
-            LOG(kError, "SlotId unoccupied");
+            LOG(kError, "SlotId  is not occupied");
             return false;
         }
         if(rec.GetLength()<=slotData->m_len){
             memcpy(m_pagebuf+slotData->m_off, rec.GetData(), rec.GetLength());
-            //memcpy(m_pagebuf+slotData->m_off+rec.GetLength(), g_zerobuf, slotData->m_len - rec.GetLength());
             slotData->m_len = rec.GetLength();
             rec.GetRecordId().sid  = sid;
             return true;
@@ -312,33 +301,22 @@ namespace taco {
                                                                   "expecting in [" SLOTID_FORMAT ", " SLOTID_FORMAT "]",
                     sid, GetMinSlotId(), GetMaxSlotId() + 1);
         }
-
-        // No need to implement it at this point in Project heap file
         return false;
     }
 
     void
     VarlenDataPage::RemoveSlot(SlotId sid) {
         CheckSID(sid);
-
-        // No need to implement it at this point in Project heap file
     }
 
     void
     VarlenDataPage::ShiftSlots(SlotId n, bool truncate) {
-        // No need to implement it at this point in Project heap file
-        // Hint: don't forget to update m_has_hole in the page header
-        //
-        // This is part of the bonus project for b-tree page rebalancing. No need
-        // to implement this function if you do not want to implement b-tree page
-        // rebalancing.
     }
 
     FieldOffset
     VarlenDataPage::ComputeFreeSpace(FieldOffset usr_data_sz,
                                      SlotId num_recs,
                                      FieldOffset total_reclen) {
-        // No need to implement it at this point in Project heap file
         return -1;
     }
 
