@@ -8,6 +8,8 @@ set(UTILS_LIB_SRC
     misc.cpp
     pgmkdirp.cpp
     zerobuf.cpp
+    Walker.cpp
+    TruncatedZipfian.cpp
 )
 
 add_tdb_object_library(utils ${UTILS_LIB_SRC})

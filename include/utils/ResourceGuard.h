@@ -6,20 +6,20 @@
 namespace taco {
 
 /*!
- * ResourceGuard is used for automatically releases some resource when it goes
- * out of scope. It is similar to std::unique_ptr for dynamic allocated memory,
- * but it allows one to enable RAII idiom on other resources such as buffer
- * frames.
+ * ResourceGuard is used for automatically relinquishes some resource when it
+ * goes out of scope. It is similar to std::unique_ptr for dynamic allocated
+ * memory, but it allows one to enable RAII idiom on other resources such as
+ * buffer frames.
  *
  * The resource is denoted as a \p T typed value, (usually an integral or a
- * pointer), and it may be released by calling the \p ReleaseFunc::operator(). Some
- * constraints apply: 1) \p T may not be a boolean value; 2) \p ReleaseFunc must
- * be trivially constrictible. The release functor is not called if the stored
- * value is an \p invalid value (see below).
+ * pointer), and it may be reclaimed by calling the \p Relinquish::operator().
+ * Some constraints apply: 1) \p T may not be a boolean value; 2) \p Relinquish
+ * must be trivially constrictible. The relinquish functor is not called if the
+ * stored value is an \p invalid value (see below).
  *
  * The third type parameter \p FlagType and the fourth value parameter \p
- * InvalidVal are used for denoting an \p invalid value. \p FlagType must be one of
- * the following:
+ * InvalidVal are used for denoting an \p invalid value. \p FlagType must be
+ * one of the following:
  *
  *  - \p FlagType: there is a special sentinel value that serves as the
  *    \p invalid value
@@ -34,10 +34,18 @@ namespace taco {
  *
  * There is an implicit conversion from \t ResourceGuard<T, ...> to \t T so
  * that it may be used in place of \t T in many places. Caution: be careful
- * with double release if you directly call the release function instead of \p
- * ResourceGuard::reset() before it goes out of scope, unless the release
+ * with double "free" if you directly call the relinquish function instead of \p
+ * ResourceGuard::reset() before it goes out of scope, unless the relinquish
  * function specifically consider for that (e.g., \p
  * BufferManager::UnpinPage()).
+ *
+ * Another useful function is ResourceGuard::Release(), which does not
+ * relinquish the resource. Rather it transfers the resource back to the caller
+ * by setting ResourceGuard to an invalid value and will not invoke the
+ * relinquish functor upon destruction. This is useful when the caller wants to
+ * transfer the ownership of the underlying resource beyond the scope where the
+ * ResourceGuard is defined (e.g., passing a buffer id stored in ScopedBufferId
+ * into a function that will unpin it from inside).
  *
  * Note: always prefer existing C++ standard library guard or type alias in
  * specific components. E.g., use std::unique_ptr for memory resource; use \p
@@ -45,9 +53,11 @@ namespace taco {
  * stoarge/BufferManager.h.
  *
  * The main template implements the class when \p FlagType is \p T.
+ *
+ *
  */
 template<class T,
-         class ReleaseFunc,
+         class Relinquish,
          class FlagType = bool,
          FlagType InvalidVal = std::is_lvalue_reference<T>::value,
          class = typename std::enable_if<
@@ -56,8 +66,8 @@ template<class T,
              // FlagType must be bool, same as T
              (std::is_same<FlagType, bool>::value ||
               std::is_same<FlagType, T>::value) &&
-             // ReleaseFunc must be trivially default constructible
-             std::is_trivially_default_constructible<ReleaseFunc>::value
+             // Relinquish must be trivially default constructible
+             std::is_trivially_default_constructible<Relinquish>::value
          >::type>
 class ResourceGuard {
 public:
@@ -67,7 +77,7 @@ public:
 
     ~ResourceGuard() {
         if (m_val != InvalidVal)
-            ReleaseFunc()(m_val);
+            Relinquish()(m_val);
     }
 
     // no copy
@@ -82,7 +92,7 @@ public:
 
     ResourceGuard& operator=(ResourceGuard&& other) {
         if (m_val != InvalidVal) {
-            ReleaseFunc()(m_val);
+            Relinquish()(m_val);
         }
         m_val = other.m_val;
         other.m_val = InvalidVal;
@@ -107,14 +117,22 @@ public:
         return m_val != InvalidVal;
     }
 
+    /*!
+     * Relinquishes the underlying resource and sets its to an invalid value.
+     */
     void
     Reset() {
         if (m_val != InvalidVal) {
-            ReleaseFunc()(m_val);
+            Relinquish()(m_val);
             m_val = InvalidVal;
         }
     }
 
+    /*!
+     * Releases the underlying resource without relinquishing it and returns it
+     * to the caller. The ResourceGuard is set to an invalid state after this
+     * call.
+     */
     T
     Release() {
         T ret = m_val;
@@ -140,8 +158,8 @@ private:
  * Specialization of ResourceGuard when we use an additional boolean flag to
  * denote the invalid value.
  */
-template<class T, class ReleaseFunc>
-class ResourceGuard<T, ReleaseFunc, bool, false, void> {
+template<class T, class Relinquish>
+class ResourceGuard<T, Relinquish, bool, false, void> {
 public:
     ResourceGuard(): m_isvalid(false) {}
 
@@ -150,7 +168,7 @@ public:
 
     ~ResourceGuard() {
         if (m_isvalid)
-            ReleaseFunc()(m_val);
+            Relinquish()(m_val);
     }
 
     // no copy
@@ -167,7 +185,7 @@ public:
 
     ResourceGuard& operator=(ResourceGuard&& other) {
         if (m_isvalid) {
-            ReleaseFunc()(m_val);
+            Relinquish()(m_val);
         }
         m_val = other.m_val;
         m_isvalid = other.m_isvalid;
@@ -197,7 +215,7 @@ public:
     void
     Reset() {
         if (m_isvalid) {
-            ReleaseFunc()(m_val);
+            Relinquish()(m_val);
             m_val = T();
             m_isvalid = false;
         }
@@ -230,10 +248,10 @@ private:
 /*!
  * Specialization of \p ResourceGuard where we have an always-valid value
  * (e.g., lvalue-ref). This specialization may not be default-constructed,
- * copied or moved, nor can it \p Reset() or ReleaseFunc().
+ * copied or moved, nor can it \p Reset() or Relinquish().
  */
-template<class T, class ReleaseFunc>
-class ResourceGuard<T, ReleaseFunc, bool, true, void> {
+template<class T, class Relinquish>
+class ResourceGuard<T, Relinquish, bool, true, void> {
 public:
     // no default-ctor
 
@@ -241,7 +259,7 @@ public:
         m_val(val) {}
 
     ~ResourceGuard() {
-        ReleaseFunc()(m_val);
+        Relinquish()(m_val);
     }
 
     // no copy

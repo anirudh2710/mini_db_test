@@ -600,24 +600,27 @@ public:
     }
 
     /*!
-     * Whether this datum is variable-length and owns its byte array.  A Datum
-     * with `HasExternalRef() == true` may only be read when the byte array it
-     * references is still alive (e.g., it must be pinned if it is referencing
-     * a buffer frame). Otherwise, a Datum is safe to be read at any time.
+     * Whether this datum is variable-length but does not own its byte array.
+     * A Datum with `HasExternalRef() == true` may only be read when the byte
+     * array it references is still alive (e.g., it must be pinned if it is
+     * referencing a buffer frame). Otherwise, a Datum is safe to be read at
+     * any time.
      */
     bool
     HasExternalRef() const {
-        return m_isvarlen && m_isowned;
+        return m_isvarlen && !m_isowned;
     }
 
     /*!
-     * Returns a deep copy of this datum so that `HasExternalRef() == false`.
+     * Returns a deep copy of this datum so that `HasExternalRef() == false`
+     * and the owned value is a copy of the old one.
      *
-     * It may just return itself.
+     * It may just return itself if this datum does not store a variable-length
+     * value.
      */
     Datum
     DeepCopy() const {
-        if (HasExternalRef()) {
+        if (m_isvarlen) {
             const char *bytes = GetVarlenBytes();
             size_t size = GetVarlenSize();
             // We don't know what exactly the alignment requirement is, so

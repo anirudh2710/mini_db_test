@@ -116,6 +116,36 @@ remove_dir(const char *path) {
     }
 }
 
+void
+copy_dir(const char *srcpath, const char *dstpath) {
+    if (!dir_exists(srcpath)) {
+        LOG(kFatal, "source directory %s does not exist", srcpath);
+    }
+    if (dstpath[0] == '\0') {
+        LOG(kFatal, "empty destination directory");
+    }
+    if (absl::string_view(srcpath).find("'") != std::string::npos) {
+        LOG(kFatal, "must not have single quotes in source path: %s", srcpath);
+    }
+
+    if (absl::string_view(dstpath).find("'") != std::string::npos) {
+        LOG(kFatal, "must not have single quotes in destination path: %s",
+                    dstpath);
+    }
+
+    if (dir_empty(srcpath)) {
+        // no need to copy empty directory
+        return ;
+    }
+
+    //TODO usd std::filesystem::copy instead if we switch to c++17
+    std::string cmd = absl::StrCat("cp -r '", srcpath, "'/* '", dstpath, "'/");
+    int res = system(cmd.c_str());
+    if (res != 0) {
+        LOG(kFatal, "unable to copy directory %s to %s", srcpath, dstpath);
+    }
+}
+
 std::string
 mktempfile(std::string prefix) {
     prefix.resize(prefix.length() + 6, 'X');

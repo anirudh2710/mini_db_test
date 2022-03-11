@@ -26,7 +26,7 @@ static bool heapfile_warn_rec_appear_twice = false;
  * through the derived catalog cache class's CreateCatalogFile() function,
  * and is assumed to have the file ID of 1.
  *
- * TODO if you change FileManager, make sure it reserves the file ID 1 for
+ * XXX if you change FileManager, make sure it reserves the file ID 1 for
  * the DB meta file.
  */
 constexpr FileId DBMETA_FID = 1;
@@ -1181,6 +1181,64 @@ CatCacheBase<CatCacheCls>::InsertCatalogEntries(
         ((CatCacheCls*)this)->AppendRecord(tabfh, rec);
     }
     ((CatCacheCls*)this)->CloseCatalogFile(tabfh);
+}
+
+template<class CatCacheCls>
+std::vector<Oid>
+CatCacheBase<CatCacheCls>::FindAllIndexesOfTable(Oid idxtabid) {
+    auto entries = SearchForCatalogEntry<false, 1, false>::Call(
+        this, initoids::TAB_Index, initoids::IDX_Index_idxtabid, 0,
+        {SysTable_Index::idxtabid_colid()}, {initoids::FUNC_OID_eq},
+        idxtabid);
+    std::vector<Oid> ret;
+    ret.reserve(entries.size());
+    for (auto &entry: entries) {
+        ret.push_back(
+            ((SysTable_Index*) entry->m_systable_struct.get())->idxid());
+    }
+    return ret;
+}
+
+
+template<class CatCacheCls>
+CCLookupTableEntry*
+CatCacheBase<CatCacheCls>::SearchForCatalogEntryByOid(
+    Oid systabid,
+    Oid idxid_hint,
+    FieldId oid_colid,
+    Oid oid) {
+    return SearchForCatalogEntry<true, 1, false>::Call(
+        this, systabid, idxid_hint,
+        {oid_colid}, {initoids::FUNC_OID_eq}, oid);
+}
+
+template<class CatCacheCls>
+CCLookupTableEntry*
+CatCacheBase<CatCacheCls>::SearchForCatalogEntryByName(
+    Oid systabid,
+    Oid idxid_hint,
+    FieldId name_colid,
+    absl::string_view name) {
+    return SearchForCatalogEntry<true, 1, false>::Call(
+        this, systabid, InvalidOid, {name_colid},
+        {initoids::FUNC_VARCHAR___STRING_eq_ci}, name);
+}
+
+template<class CatCacheCls>
+std::shared_ptr<const SysTable_FunctionArgs>
+CatCacheBase<CatCacheCls>::FindFunctionArgs(Oid funcid, int16_t funcargid) {
+    auto entry = SearchForCatalogEntry<true, 2, false>::Call(
+        this, initoids::TAB_FunctionArgs,
+        initoids::IDX_FunctionArgs_funcid_funcargid,
+        {SysTable_FunctionArgs::funcid_colid(),
+         SysTable_FunctionArgs::funcargid_colid()},
+        {initoids::FUNC_OID_eq, initoids::FUNC_INT2_eq},
+        funcid, funcargid);
+    if (!entry) {
+        return nullptr;
+    }
+    return static_pointer_cast<const SysTable_FunctionArgs>(
+        entry->m_systable_struct);
 }
 
 }   // namespace taco

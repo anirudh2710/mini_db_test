@@ -167,6 +167,19 @@ public:
             entry->m_systable_struct);
     }
 
+    /*!
+     * Returns the type name of the specified type if it exists.
+     * If the type does not exists, returns the string "INVALID_TYPE".
+     */
+    inline std::string
+    GetTypeName(Oid typid) {
+        auto typ = FindType(typid);
+        if (!typ.get()) {
+            return "INVALID_TYPE";
+        }
+        return typ->typname();
+    }
+
     inline std::shared_ptr<const SysTable_Function>
     FindFunction(Oid funcid) {
         auto entry =
@@ -195,21 +208,8 @@ public:
             ->funcid();
     }
 
-    inline std::shared_ptr<const SysTable_FunctionArgs>
-    FindFunctionArgs(Oid funcid, int16_t funcargid) {
-        auto entry = SearchForCatalogEntry<true, 2, false>::Call(
-            this, initoids::TAB_FunctionArgs,
-            initoids::IDX_FunctionArgs_funcid_funcargid,
-            {SysTable_FunctionArgs::funcid_colid(),
-             SysTable_FunctionArgs::funcargid_colid()},
-            {initoids::FUNC_OID_eq, initoids::FUNC_INT2_eq},
-            funcid, funcargid);
-        if (!entry) {
-            return nullptr;
-        }
-        return static_pointer_cast<const SysTable_FunctionArgs>(
-            entry->m_systable_struct);
-    }
+    std::shared_ptr<const SysTable_FunctionArgs> FindFunctionArgs(
+        Oid funcid, int16_t funcargid);
 
     inline std::shared_ptr<const SysTable_Index>
     FindIndex(Oid idxid) {
@@ -239,20 +239,7 @@ public:
             ->idxid();
     }
 
-    inline std::vector<Oid>
-    FindAllIndexesOfTable(Oid idxtabid) {
-        auto entries = SearchForCatalogEntry<false, 1, false>::Call(
-            this, initoids::TAB_Index, initoids::IDX_Index_idxtabid, 0,
-            {SysTable_Index::idxtabid_colid()}, {initoids::FUNC_OID_eq},
-            idxtabid);
-        std::vector<Oid> ret;
-        ret.reserve(entries.size());
-        for (auto &entry: entries) {
-            ret.push_back(
-                ((SysTable_Index*) entry->m_systable_struct.get())->idxid());
-        }
-        return ret;
-    }
+    std::vector<Oid> FindAllIndexesOfTable(Oid idxtabid);
 
     std::shared_ptr<const IndexDesc> FindIndexDesc(Oid idxid);
 
@@ -273,16 +260,11 @@ public:
      * This assumes that there is only one record matching the oid. Otherwise,
      * it will return the first one it finds.
      */
-    inline CCLookupTableEntry*
-    SearchForCatalogEntryByOid(
+    CCLookupTableEntry* SearchForCatalogEntryByOid(
         Oid systabid,
         Oid idxid_hint,
         FieldId oid_colid,
-        Oid oid) {
-        return SearchForCatalogEntry<true, 1, false>::Call(
-            this, systabid, idxid_hint,
-            {oid_colid}, {initoids::FUNC_OID_eq}, oid);
-    }
+        Oid oid);
 
     /*!
      * Searches for the systable entry with its name column at \p name_colid
@@ -291,16 +273,11 @@ public:
      * This assumes there is only one record matching the name. Otherwise, it
      * will return the first one it finds.
      */
-    inline CCLookupTableEntry*
-    SearchForCatalogEntryByName(
+    CCLookupTableEntry* SearchForCatalogEntryByName(
         Oid systabid,
         Oid idxid_hint,
         FieldId name_colid,
-        absl::string_view name) {
-        return SearchForCatalogEntry<true, 1, false>::Call(
-            this, systabid, InvalidOid, {name_colid},
-            {initoids::FUNC_VARCHAR___STRING_eq_ci}, name);
-    }
+        absl::string_view name);
 
     template<bool expect_unique, size_t NPreds, bool no_cache>
     struct SearchForCatalogEntry {

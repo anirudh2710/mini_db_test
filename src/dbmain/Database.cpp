@@ -5,6 +5,9 @@
 #include <absl/strings/str_join.h>
 
 #include "catalog/CatCache.h"
+#include "storage/BufferManager.h"
+#include "storage/FileManager.h"
+#include "storage/Table.h"
 #include "query/expr/optypes.h"
 #include "utils/builtin_funcs.h"
 #include "utils/fsutils.h"
@@ -32,6 +35,7 @@ Database::init_global() {
         LOG(kFatal,
             "taco::Database::init_global() must not be called more than once");
     }
+
     s_init_global_called = true;
     InitBuiltinFunctions();
     InitOpTypes();
@@ -52,6 +56,25 @@ Database::open(const std::string &path,
     }
 
     m_db_path = path;
+
+    if (allow_overwrite && create) {
+        // We don't have to remove the directory if it is empty.
+        if (dir_exists(path.c_str()) && !dir_empty(path.c_str())) {
+            remove_dir(path.c_str());
+        }
+        // If the specified path is a file, it does nothing here but the file
+        // manager will throw a fatal error.
+    }
+
+    m_file_manager = new FileManager();
+    m_file_manager->Init(path, 256 * PAGE_SIZE, create);
+
+    if (!g_test_no_bufman) {
+        m_buf_manager = new BufferManager();
+        m_buf_manager->Init(bpool_size);
+    } else {
+        m_buf_manager = nullptr;
+    }
 
     if (!g_test_no_catcache) {
         m_catcache = new CatCache();
@@ -77,6 +100,19 @@ Database::close()
         m_catcache = nullptr;
     }
 
+    if (m_buf_manager)
+    {
+        m_buf_manager->Destroy();
+        delete m_buf_manager;
+        m_buf_manager = nullptr;
+    }
+
+    if (m_file_manager)
+    {
+        delete m_file_manager;
+        m_file_manager = nullptr;
+    }
+
     m_initialized = false;
 }
 
@@ -88,7 +124,26 @@ Database::CreateTable(absl::string_view tabname,
                       std::vector<bool> colisnullable,
                       std::vector<bool> colisarray) {
 
-    LOG(kFatal, "not available until heap file is implemented");
+    // Create a new file.
+    std::unique_ptr<File> f = file_manager()->Open(NEW_REGULAR_FID);
+
+    // Put the table into the system catalog.
+    std::vector<std::string> field_names_copy;
+    field_names_copy.reserve(field_names.size());
+    std::transform(field_names.begin(), field_names.end(),
+        std::back_inserter(field_names_copy),
+        [](absl::string_view s) -> std::string { return cast_as_string(s); });
+    Oid tabid = catcache()->AddTable(tabname, std::move(coltypid),
+                                     std::move(coltypparam),
+                                     std::move(field_names_copy),
+                                     std::move(colisnullable),
+                                     std::move(colisarray),
+                                     f->GetFileId());
+
+    // Initializes the heap file.
+    std::shared_ptr<const TableDesc> tabdesc = catcache()->FindTableDesc(tabid);
+    ASSERT(tabdesc.get());
+    Table::Initialize(tabdesc.get());
 }
 
 void

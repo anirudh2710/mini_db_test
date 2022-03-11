@@ -8,6 +8,7 @@ set(CATALOG_LIB_SRC
     Schema.cpp
     TableDesc.cpp
     VolatileCatCache.cpp
+    PersistentCatCache.cpp
     IndexDesc.cpp
 )
 

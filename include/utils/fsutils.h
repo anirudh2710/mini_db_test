@@ -13,7 +13,7 @@ bool regular_file_exists(const char *path);
 bool dir_exists(const char *path);
 void remove_dir(const char *path);
 bool dir_empty(const char *path);
-
+void copy_dir(const char *srcpath, const char *dstpath);
 std::string mktempfile(std::string prefix);
 std::string mktempdir(std::string prefix);
 
