@@ -3,7 +3,12 @@
 
 #include "base/TDBNonDBTest.h"
 
+#include <absl/flags/declare.h>
+#include <absl/flags/flag.h>
+
 namespace taco {
+
+extern std::string g_test_existing_db_path;
 
 class TDBDBTest: public TDBNonDBTest {
 protected:

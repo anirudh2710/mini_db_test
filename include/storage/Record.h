@@ -15,6 +15,10 @@ class Schema;
  * The record ID of a record on a page is a pair of `(PageNumber, SlotId)'.
  */
 struct RecordId {
+    RecordId(): pid(INVALID_PID), sid(INVALID_SID) {}
+    RecordId(PageNumber pid) : pid(pid), sid(INVALID_SID) {}
+    RecordId(PageNumber pid, SlotId sid): pid(pid), sid(sid) {}
+
     PageNumber  pid;
     SlotId      sid;
 

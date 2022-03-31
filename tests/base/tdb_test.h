@@ -15,6 +15,8 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 
+#include <absl/strings/str_join.h>
+
 #include <random>
 
 #include "utils/macro_map.h"
@@ -111,6 +113,31 @@ MATCHER(HasAnyError, "") {
         SAFE_CAST_ALL_MATCHERS_TO_TDBERROR_MATCHER(\
             HasAnyError() \
             IF_NONEMPTY_COMMA(CADR(__VA_ARGS__), /* empty */) CDR(__VA_ARGS__)))
+
+template<class U>
+bool EqualsToOneOfImpl(const U &u) {
+    return false;
+}
+
+template<class U, class T0, class... T>
+bool EqualsToOneOfImpl(const U &u, const T0 &t0, const T&... t) {
+    return (u == t0) ? true : EqualsToOneOfImpl(u, t...);
+}
+
+//
+// Usage: EXPECT_TRUE(EqualsToOneOf(1, 1, 2, 3));
+//
+template<class U, class T0, class... T>
+::testing::AssertionResult EqualsToOneOf(U &&u,
+                                         T0 &&t0,
+                                         T&&... t) {
+    bool res = EqualsToOneOfImpl(u, t0, t...);
+    if (res)
+        return ::testing::AssertionSuccess();
+    return ::testing::AssertionFailure() << u << " does not equal to any of: "
+        << absl::StrJoin({std::forward<T0>(t0), std::forward<T>(t)...}, ", ",
+                         absl::StreamFormatter());
+}
 
 /*!
  * SetUp assert failure won't stop the tests from running so one must throw

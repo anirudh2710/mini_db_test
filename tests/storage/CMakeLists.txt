@@ -15,4 +15,19 @@ gtest_add_tests(
     TEST_SUFFIX "NoFallocate"
 )
 
+add_tdb_test(BasicTestBufferManager)
+target_link_options(BasicTestBufferManager
+    PUBLIC -Wl,--wrap,taco_fileman_readpage_impl
+    PUBLIC -Wl,--wrap,taco_fileman_writepage_impl)
+
+add_tdb_test(BasicTestEvictionPolicy)
+target_link_options(BasicTestEvictionPolicy
+    PUBLIC -Wl,--wrap,taco_fileman_readpage_impl
+    PUBLIC -Wl,--wrap,taco_fileman_writepage_impl)
+
+add_tdb_test(BasicTestVarlenDataPage)
+
+add_tdb_test_binary(BasicTestTable)
+gtest_discover_tests(BasicTestTable)
+
 

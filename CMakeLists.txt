@@ -293,17 +293,12 @@ set(CONFIG_PAGE_SIZE 4096)
 # don't force fsync by default
 set(FORCE_FSYNC, 0)
 
-if (NOT DEFINED USE_VOLATILE_CATCACHE)
-    # defaults to use volatile catalog cache before we have heap file
-    set(USE_VOLATILE_CATCACHE ON)
-endif()
-
 if (USE_VOLATILE_CATCACHE)
 set(CATALOG_CACHE_HEADER "catalog/VolatileCatCache.h")
 set(CATALOG_CACHE_CLASS "::taco::VolatileCatCache")
 else()
-message(FATAL_ERROR
-    "can't use persistent catalog before we have a heap file implementation")
+set(CATALOG_CACHE_HEADER "catalog/PersistentCatCache.h")
+set(CATALOG_CACHE_CLASS "::taco::PersistentCatCache")
 endif()
 
 set(ALWAYS_USE_FIXEDLEN_DATAPAGE OFF)
