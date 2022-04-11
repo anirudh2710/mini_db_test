@@ -14,6 +14,8 @@ add_tdb_test(BasicTestRepoCompilesAndRuns)
 # add the tests
 add_subdirectory(storage)
 
+add_subdirectory(index)
+
 # The example_test target shows the usages of the predefined test fixtures.
 # It should be disabled in the assignment distribution.
 #add_tdb_test(example_test)

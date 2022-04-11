@@ -48,8 +48,48 @@ BTree::Iterator::Iterator(BTree *btree,
 
 bool
 BTree::Iterator::Next() {
-    // TODO implement it
-    return false;
+
+    //TODO
+    BTreeLeafRecordHeaderData *rec_head;
+    const char* payload;
+    VarlenDataPage pg(g_bufman->GetBuffer(m_bufid));
+    while(m_sid==pg.GetMaxOccupiedSlotId())
+    {
+        BTreePageHeaderData* pghead;
+        char *buffer;
+        m_sid = 0;
+        
+        pghead  = (BTreePageHeaderData*)pg.GetUserData();
+
+        if(pghead->m_next_pid==INVALID_PID) return false;
+        g_bufman->UnpinPage(m_bufid);
+        BufferId bufid = g_bufman->PinPage(pghead->m_next_pid, &buffer);
+        m_bufid = bufid;
+        pg = VarlenDataPage(buffer);
+    }
+    m_sid += 1;
+    if(!(m_sid >= MinSlotId && m_sid<=pg.GetMaxOccupiedSlotId())) 
+    {
+        return false;
+    }
+    const char *buffer = pg.GetRecord(m_sid).GetData();
+
+    BTree *btree = GetIndexAs<BTree>();
+    rec_head = (BTreeLeafRecordHeaderData*)buffer;
+    if(m_upper.get())
+    {
+        RecordId rec = m_upper_isstrict ? INFINITY_RECORDID : rec_head->m_recid;
+        int temp = btree->BTreeTupleCompare(m_upper.get(), rec, buffer, true);
+        if(temp <= (m_upper_isstrict ? 0 : -1)){
+            return false;
+        }
+    }
+    payload = rec_head->GetPayload();
+    Record rcd(payload, sizeof(payload));
+    m_rec = rcd;
+
+    m_rec.GetRecordId() = rec_head->m_recid;
+    return true;
 }
 
 bool

@@ -5,6 +5,7 @@
 
 #include "catalog/CatCacheBase.h"
 #include "storage/Record.h"
+#include "index/BulkLoadIterator.h"
 
 namespace taco {
 
@@ -36,6 +37,35 @@ private:
         uint16_t    m_nextidx;
         uint16_t    m_endidx;
     };
+
+    class InmemFileBulkLoadIterator: public BulkLoadIterator {
+    public:
+        InmemFileBulkLoadIterator(std::shared_ptr<const IndexDesc> idxdesc,
+                                  std::shared_ptr<const TableDesc> tabdesc,
+                                  VolatileCatCache *vcatcache,
+                                  CatFileIterator iter):
+            BulkLoadIterator(idxdesc->GetKeySchema()),
+            m_idxdesc(std::move(idxdesc)),
+            m_tabdesc(std::move(tabdesc)),
+            m_vcatcache(vcatcache),
+            m_iter(iter),
+            m_data() {}
+
+        bool Next() override;
+
+        void EndScan() override {
+            m_vcatcache->EndIterateCatEntry(m_iter);
+        }
+
+    private:
+        std::shared_ptr<const IndexDesc> m_idxdesc;
+        std::shared_ptr<const TableDesc> m_tabdesc;
+        VolatileCatCache *m_vcatcache;
+        CatFileIterator m_iter;
+        std::vector<Datum> m_data;
+    };
+
+    friend class InmemFileBulkLoadIterator;
 
     /*!
      * Creates a new catalog file and returns its file ID. If \p
@@ -159,6 +189,14 @@ private:
      * does nothing except for invalidating the iterator.
      */
     void EndIterateCatEntry(CatFileIterator &iter);
+
+    /*!
+     * Returns a BulkLoadIterator for bulk loading a systable index.
+     */
+    BulkLoadIterator *GetBulkLoadIterator(
+        FileHandle &fh,
+        std::shared_ptr<const TableDesc> tabdesc,
+        std::shared_ptr<const IndexDesc> idxdesc);
 
     /*!
      * This vector stores all our in-memory only files. The index into

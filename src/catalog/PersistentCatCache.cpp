@@ -3,6 +3,7 @@
 #include "catalog/systables/bootstrap_data.h"
 #include "storage/FileManager.h"
 #include "storage/Table.h"
+#include "index/TableBulkLoadIterator.h"
 
 // include the private implementations of the CatCacheBase
 #include "CatCacheBase_private.inc"
@@ -71,7 +72,8 @@ PersistentCatCache::OpenCatalogFile(FileId fid, const TableDesc *tabdesc) {
         // know the length of the Schema for variable-length
         // This only applies to opening files during initialization.
         FileHandle fh{fid, nullptr};
-        _CreateTableIfNullForFileHandle(fh, 0);
+        if (fid != DBMETA_FID)
+            _CreateTableIfNullForFileHandle(fh, 0);
         return fh;
     }
 
@@ -160,6 +162,16 @@ void
 PersistentCatCache::EndIterateCatEntry(CatFileIterator &iter) {
     // just invalidates the iterator
     iter.EndScan();
+}
+
+BulkLoadIterator*
+PersistentCatCache::GetBulkLoadIterator(
+    FileHandle &fh,
+    std::shared_ptr<const TableDesc> tabdesc,
+    std::shared_ptr<const IndexDesc> idxdesc) {
+    ASSERT(fh.m_table.get());
+    return new TableBulkLoadIterator(std::move(idxdesc),
+                                     fh.m_table->StartScan());
 }
 
 void
