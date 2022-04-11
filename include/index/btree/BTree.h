@@ -1,6 +1,7 @@
 #ifndef INDEX_BTREE_BTREE_H
 #define INDEX_BTREE_BTREE_H
 
+
 #include "tdb.h"
 
 #include "catalog/IndexDesc.h"
@@ -9,7 +10,7 @@
 #include "index/IndexKey.h"
 #include "storage/Record.h"
 #include "storage/FileManager.h"
-#include "storage/VarlenDatapage.h"
+
 
 namespace taco {
 
