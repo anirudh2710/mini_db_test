@@ -9,6 +9,7 @@
 #include "index/IndexKey.h"
 #include "storage/Record.h"
 #include "storage/FileManager.h"
+#include "storage/VarlenDatapage.h"
 
 namespace taco {
 
@@ -226,6 +227,8 @@ private:
      * Note that it is undefined \p find_next_key is true when \p buf points to
      * an internal page.
      */
+
+
     SlotId BinarySearchOnPage(char *buf,
                               const IndexKey *key,
                               const RecordId &recid);
