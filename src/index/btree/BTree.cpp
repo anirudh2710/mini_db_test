@@ -40,30 +40,8 @@ BTree::Initialize(const IndexDesc *idxdesc) {
         BTreeCheckComparisonOperatorPrototype(idxcoltypid, idxcoleqfuncid);
     }
 
-    //TODO implement
-
-
-    FileId fid = idxdesc->GetIndexEntry()->idxfid();
-    std::unique_ptr<File> f = g_fileman->Open(fid);
-    PageNumber pgNum = f->AllocatePage();
-    char* buf;
-    BufferId bufId = g_bufman->PinPage(pgNum, &buf);
-    BTreePageHeaderData::Initialize(buf, 
-                                        BTREE_PAGE_ISROOT|BTREE_PAGE_ISLEAF, 
-                                        InvalidOid, 
-                                        InvalidOid);
-    PageNumber pid = f->GetFirstPageNumber();
-    char *metaPageBuf;    
-    ScopedBufferId bid = g_bufman->PinPage(pid, &metaPageBuf);
-    BTreeMetaPageData::Initialize(metaPageBuf,pgNum);
-    g_bufman->UnpinPage(bid);
-    g_bufman->UnpinPage(bufId);
-    /*std::unique_ptr<BTree> btree = Create(std::make_shared<IndexDesc>(idxdesc));
-    BTree* bt = btree.get();
-    maxaligned_char_buf* buf;
-    bt->CreateNewRoot(INVALID_BUFID, &buf);*/
+    // TODO implement initialization
 }
-
 
 std::unique_ptr<BTree>
 BTree::Create(std::shared_ptr<const IndexDesc> idxdesc) {
@@ -110,24 +88,7 @@ BTree::~BTree() {
 bool
 BTree::IsEmpty() {
     // TODO implement it
-    char *meta_buf; 
-    PageNumber page_no;
-    ScopedBufferId meta_bufid;
-    ScopedBufferId root_id;
-    char* root_buf;
-
-    page_no = m_file->GetFirstPageNumber();   
-    meta_bufid = g_bufman->PinPage(page_no, &meta_buf);
-
-    BTreeMetaPageData* meta_page = (BTreeMetaPageData*)meta_buf;
-    
-    root_id = g_bufman->PinPage(meta_page->m_root_pid, &root_buf);
-    VarlenDataPage varlen(root_buf);
-
-    g_bufman->UnpinPage(meta_bufid);
-    g_bufman->UnpinPage(root_id);
-    
-    return varlen.GetRecordCount() == 0;
+    return false;
 }
 
 uint32_t
@@ -135,7 +96,7 @@ BTree::GetTreeHeight() {
     std::vector<PathItem> search_path;
     BufferId bufid = FindLeafPage(nullptr, RecordId(), &search_path);
     g_bufman->UnpinPage(bufid);
-    return (uint32_t) search_path.size()+1;
+    return (uint32_t) search_path.size() + 1;
 }
 
 void

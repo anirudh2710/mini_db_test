@@ -4,3 +4,4 @@
 /external/install
 .DS_Store
 /*.tar.xz
+/data/preloaded_btree

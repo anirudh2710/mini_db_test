@@ -12,6 +12,10 @@
 #include "catalog/InitDataFileReader.h"
 #include "catalog/systables/initoids.h"
 #include "index/idxtyps.h"
+#include "index/Index.h"
+#include "index/IndexKey.h"
+#include "index/TableBulkLoadIterator.h"
+#include "index/tuple_compare.h"
 #include "storage/FileManager.h"
 #include "query/expr/optypes.h"
 #include "utils/typsupp/varchar.h"
@@ -355,13 +359,232 @@ CatCacheBase<CatCacheCls>::CheckIndexes(bool init) {
         return ;
     }
 
-    LOG(kFatal, "index support not available yet");
+    // Initializes and creates the catalog indexes below.
+    //
+    // For init, we assume none of the indexes have
+    // been created and will try to update all the Index systable entries;
+    // initializes and loads all the indexes.
+    if (init) {
+        auto index_tabdesc = FindTableDesc(initoids::TAB_Index);
+        const Schema *index_schema = index_tabdesc->GetSchema();
+        FileId index_tabfid = index_tabdesc->GetTableEntry()->tabfid();
+
+        auto fh = ((CatCacheCls*)this)->OpenCatalogFile(index_tabfid,
+                                                        index_tabdesc.get());
+        auto fiter = ((CatCacheCls*)this)->IterateCatEntry(fh);
+        maxaligned_char_buf entry_buf;
+        entry_buf.reserve(PAGE_SIZE);
+        while (((CatCacheCls*)this)->NextCatEntry(fiter)) {
+            const char *buf = ((CatCacheCls*)this)->GetCurrentCatEntry(fiter);
+            std::vector<Datum> data = index_schema->DissemblePayload(buf);
+            IdxType idxtyp = data[SysTable_Index::idxtyp_colid()].GetUInt8();
+            if (idxtyp != IDXTYP(INVALID)) {
+                // same as updating the file id for the Table entries
+                if (!heapfile_warn_rec_appear_twice) {
+                    auto severity =
+                        kFatal;
+                    LOG(severity, "The same Table record appears again after "
+                                  "Table::UpdateRecord() call. This should not "
+                                  "happen if you update the record in place "
+                                  "whenever possible.");
+                    heapfile_warn_rec_appear_twice = true;
+                }
+                continue;
+            }
+
+            if (g_test_catcache_use_volatiletree) {
+                // Use the volatile tree index if we're in a test that
+                // requests so.
+                data[SysTable_Index::idxtyp_colid()] =
+                    Datum::From(IDXTYP(VOLATILETREE));
+                data[SysTable_Index::idxfid_colid()] =
+                    Datum::From(INVALID_FID);
+            } else {
+                // Otherwise, use the b-tree index.
+                // create a new file for it.
+                std::unique_ptr<File> file = g_fileman->Open(NEW_REGULAR_FID);
+                ASSERT(file.get());
+                FileId idxfid = file->GetFileId();
+                file->Close();
+
+                data[SysTable_Index::idxtyp_colid()] =
+                    Datum::From(IDXTYP(BTREE));
+                data[SysTable_Index::idxfid_colid()] =
+                    Datum::From(idxfid);
+            }
+
+            // write back the updated index entry
+            entry_buf.clear();
+            if (-1 == index_schema->WritePayloadToBuffer(data, entry_buf)) {
+                LOG(kFatal, "unable to write index entry back for index "
+                            OID_FORMAT " %s",
+                            data[SysTable_Index::idxid_colid()].GetOid(),
+                            varchar_to_string_view(
+                                data[SysTable_Index::idxname_colid()]));
+            }
+            Record rec(entry_buf);
+            ((CatCacheCls*)this)->UpdateCurrentCatEntry(fiter, rec);
+        }
+    }
+
+    std::unordered_set<Oid> built_idxid;
+
+    // initialize the IndexColumn's primary index first
+    BuildIndex(init, initoids::IDX_IndexColumn_idxcolidxid_idxcolid);
+    built_idxid.emplace(initoids::IDX_IndexColumn_idxcolidxid_idxcolid);
+
+    // then the Index's primary index
+    BuildIndex(init, initoids::IDX_Index_idxid);
+    built_idxid.emplace(initoids::IDX_Index_idxid);
+
+    // also the Type's primary index (for computing layout for new schema
+    // object)
+    BuildIndex(init, initoids::IDX_Type_typid);
+    built_idxid.emplace(initoids::IDX_Type_typid);
+
+    // allows the remainder of the initialization to utilize the index we just
+    // checked
+    m_use_index = true;
+
+    // Also check the primary indexes of Table and Column. It is safe to build
+    // the indexes here, even if technically these are needed by BuildIndex to
+    // find table descriptors and build schema objects: we should have cached
+    // all the table descriptors and index descriptors we'll need.
+    BuildIndex(init, initoids::IDX_Table_tabid);
+    built_idxid.emplace(initoids::IDX_Table_tabid);
+    BuildIndex(init, initoids::IDX_Column_coltabid_colid);
+    built_idxid.emplace(initoids::IDX_Column_coltabid_colid);
+
+
+    auto index_tabdesc = FindTableDesc(initoids::TAB_Index);
+    FileId index_tabfid = index_tabdesc->GetTableEntry()->tabfid();
+    typename CatCacheCls::FileHandle fh;
+
+    std::unique_ptr<Index> index_;
+    std::unique_ptr<Index::Iterator> index_iter;
+    UniqueIndexKey key;
+    if (init) {
+        // We'll need to build the indexes for all tables, for that we use
+        // the primary index.
+        auto idxdesc = FindIndexDesc(initoids::IDX_Index_idxid);
+        index_ = Index::Create(std::move(idxdesc));
+        index_iter = index_->StartScan(nullptr, false, nullptr, false);
+    } else {
+        // otherwise, we only need to search for all the volatile indexes
+        BuildIndex(init, initoids::IDX_Index_idxtyp);
+        built_idxid.emplace(initoids::IDX_Index_idxtyp);
+
+        // open the systable Index for reading the entire record
+        fh = ((CatCacheCls*)this)->OpenCatalogFile(index_tabfid,
+                                                    index_tabdesc.get());
+
+        // open the index
+        auto idxdesc = FindIndexDesc(initoids::IDX_Index_idxtyp);
+        index_ = Index::Create(std::move(idxdesc));
+        Datum keys = Datum::From(IDXTYP(VOLATILETREE));
+        key = IndexKey::Create(&keys, 1);
+        index_iter = index_->StartScan(key.get(), false, key.get(), false);
+    }
+
+    while (index_iter->Next()) {
+        const char *buf = index_iter->GetCurrentItem().GetData();
+        Oid idxid;
+        if (init) {
+            Datum d = index_->GetKeySchema()->GetField(0, buf);
+            ASSERT(!d.isnull());
+            idxid = d.GetOid();
+        } else {
+            Datum d = index_->GetKeySchema()->GetField(0, buf);
+            ASSERT(!d.isnull());
+            IdxType idxtyp = d.GetUInt8();
+            if (idxtyp != IDXTYP(VOLATILETREE)) {
+                break;
+            }
+
+            auto fiter = ((CatCacheCls*)this)->IterateCatEntryFrom(fh,
+                index_iter->GetCurrentRecordId());
+            if (!((CatCacheCls*)this)->NextCatEntry(fiter)) {
+                LOG(kFatal, "record %s in systable Index is not found",
+                            index_iter->GetCurrentRecordId().ToString());
+            }
+            const char *recbuf = ((CatCacheCls*)this)->GetCurrentCatEntry(fiter);
+            Datum d2 = index_tabdesc->GetSchema()->GetField(
+                SysTable_Index::idxid_colid(), recbuf);
+            ASSERT(!d2.isnull());
+            idxid = d2.GetOid();
+            ((CatCacheCls*)this)->EndIterateCatEntry(fiter);
+        }
+
+        // load data
+        if (built_idxid.count(idxid) == 0)
+            BuildIndex(init, idxid);
+    }
+    index_iter->EndScan();
 }
 
 template<class CatCacheCls>
 void
 CatCacheBase<CatCacheCls>::BuildIndex(bool init, Oid idxid) {
-    LOG(kFatal, "index support not available yet");
+    CCLookupTableEntry *entry = SearchForCatalogEntryByOid(
+        initoids::TAB_Index, initoids::IDX_Index_idxid,
+        SysTable_Index::idxid_colid(), idxid);
+    ASSERT(entry);
+
+    // find an index entry for the index
+    const SysTable_Index *idx =
+        (const SysTable_Index *) entry->m_systable_struct.get();
+    IdxType idxtyp = idx->idxtyp();
+    if (!init && !IdxTypeIsVolatile(idxtyp)) {
+        // the index should be ok since it should have been built in
+        // initialization
+        ASSERT(idx->idxfid() != INVALID_FID);
+
+        if (!m_use_index) {
+            // the first a few calls to build index should force cache the
+            // index descriptors. Otherwise, we'd have trouble locating
+            // those indexes over Index and IndexColumns that are necessary
+            // for constructing IndexDesc once we switch.
+            (void) FindIndexDesc(idxid);
+        }
+        return ;
+    }
+
+    // initialize the index and create an instance of the index
+    std::shared_ptr<const IndexDesc> idxdesc = FindIndexDesc(idxid);
+    if (!idxdesc) {
+        LOG(kFatal, "index " OID_FORMAT " does not exist", idxid);
+    }
+    Index::Initialize(idxdesc.get());
+
+    // load the index
+    Oid idxtabid = idx->idxtabid();
+    std::shared_ptr<const TableDesc> tabdesc = FindTableDesc(idxtabid);
+    if (!tabdesc) {
+        LOG(kFatal, "table " OID_FORMAT " does not exist", idxtabid);
+    }
+
+    typename CatCacheCls::FileHandle fh;
+    std::unique_ptr<Table> table;
+    std::unique_ptr<BulkLoadIterator> bulk_load_iter;
+    if (tabdesc->GetTableEntry()->tabissys()) {
+        // systable needs to be opened using the implementation provided
+        // table interface (which is not real Table in VolatileCatCache).
+        fh = ((CatCacheCls*) this)->OpenCatalogFile(
+            tabdesc->GetTableEntry()->tabfid(), tabdesc.get());
+        bulk_load_iter = absl::WrapUnique(
+            ((CatCacheCls*) this)->GetBulkLoadIterator(fh, std::move(tabdesc),
+                                                       idxdesc));
+    } else {
+        // regular tables can be opened through the Table interface
+        table = Table::Create(std::move(tabdesc));
+        bulk_load_iter = absl::make_unique<TableBulkLoadIterator>(idxdesc,
+                                                        table->StartScan());
+    }
+
+    // do the bulk loading
+    std::unique_ptr<Index> index_instance = Index::Create(idxdesc);
+    ASSERT(index_instance.get());
+    index_instance->BulkLoad(*bulk_load_iter);
 }
 
 template<class CatCacheCls>
@@ -1108,7 +1331,123 @@ CatCacheBase<CatCacheCls>
     FileId tabfid = tabdesc->GetTableEntry()->tabfid();
 
     if (_this->m_use_index) {
-        LOG(kFatal, "index support not available yet");
+        Oid idxid;
+        idxid = idxid_hint;
+        if (idxid != InvalidOid) {
+            auto idxdesc = _this->FindIndexDesc(idxid);
+            if (!idxdesc.get()) {
+                LOG(kFatal, "index " OID_FORMAT, " not found", idxid);
+            }
+
+            if (idxdesc->GetIndexEntry()->idxtabid() != systabid) {
+                LOG(kFatal, "index %s does not belong to table %s",
+                            idxdesc->GetIndexEntry()->idxname(),
+                            tabdesc->GetTableEntry()->tabname());
+            }
+
+            if (expect_unique && !idxdesc->GetIndexEntry()->idxunique()) {
+                LOG(kWarning, "looking up unique catalog entry using non-unique"
+                              " index " OID_FORMAT, idxid);
+            }
+
+            // determine the matching key prefix, we do not try to
+            // reorder the predicates here though
+            FieldId nkeys = 0;
+            FieldId max_nkeys = idxdesc->GetIndexEntry()->idxncols();
+            if (NPreds < (size_t) max_nkeys) {
+                max_nkeys = NPreds;
+            }
+            while (nkeys < max_nkeys) {
+                if (idxdesc->GetIndexColumnEntry(nkeys)->idxcoltabcolid() ==
+                    fieldid[nkeys]) {
+                    ++nkeys;
+                } else {
+                    break;
+                }
+            }
+
+            // only use the index if at least part of the prefix matches
+            if (nkeys > 0) {
+                std::unique_ptr<Index> index_ =
+                    Index::Create(std::move(idxdesc));
+                UniqueIndexKey key;
+
+                if ((size_t) nkeys == NPreds) {
+                    key = IndexKey::Create(rhs_datum.data(), NPreds);
+                } else {
+                    std::vector<DatumRef> key_data;
+                    key_data.reserve(nkeys);
+                    for (FieldId i = 0; i < nkeys; ++i) {
+                        ASSERT(!rhs_datum[i].isnull());
+                        key_data.emplace_back(rhs_datum[i]);
+                    }
+                    key = IndexKey::Create(key_data);
+                }
+
+                auto fh = ((CatCacheCls*) _this)->OpenCatalogFile(tabfid,
+                                                                  tabdesc.get());
+                auto index_iter =
+                    index_->StartScan(key.get(), false, key.get(), false);
+                while (index_iter->Next()) {
+                    // fetch the heap record and compare against the
+                    // rest of the predicates (if any)
+                    RecordId recid = index_iter->GetCurrentRecordId();
+                    auto fiter = ((CatCacheCls*) _this)
+                        ->IterateCatEntryFrom(fh, recid);
+                    if (!((CatCacheCls*) _this)->NextCatEntry(fiter)) {
+                        LOG(kFatal, "record %s not found in systable %s",
+                                    recid.ToString(),
+                                    tabdesc->GetTableEntry()->tabname());
+                    }
+                    const char *recbuf = ((CatCacheCls*) _this)
+                        ->GetCurrentCatEntry(fiter);
+                    bool is_match;
+                    if ((size_t) nkeys < NPreds) {
+                        // check the remaining predicates
+                        is_match = search_for_catalog_entry_impl::CheckIfEqual(
+                            recbuf, schema,
+                            (FieldId) NPreds - nkeys,
+                            fieldid.data() + nkeys,
+                            rhs_datum.data() + nkeys,
+                            eq_func.data() + nkeys);
+                    } else {
+                        is_match = true;
+                    }
+
+                    if (is_match) {
+                        if (expect_unique) {
+                            auto ret =
+                                _this->GetOrCreateCachedEntry<no_cache>(
+                                    systabid, recid, schema, recbuf);
+                            return search_for_catalog_entry_impl
+                                ::ReturnInputOrVector<expect_unique>
+                                ::r(std::move(ret));
+                        } else {
+                            search_for_catalog_entry_impl::OptionalEmplaceBack(
+                                ret, _this->GetOrCreateCachedEntry<no_cache>(
+                                    systabid, recid, schema, recbuf));
+
+                            // if the caller knows how many to expect, we can break early
+                            // when we find the first `expect_n` entries.
+                            if (expect_n != 0 &&
+                                search_for_catalog_entry_impl::OptionalSize(ret)
+                                    == expect_n) {
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                index_iter->EndScan();
+
+                if (expect_unique)
+                    return search_for_catalog_entry_impl
+                        ::ReturnInputOrVector<expect_unique>
+                        ::r(EntryPtr(nullptr));
+                else
+                    return ret;
+            }
+        }
     }
 
     // if not using index, defaults to the slower table scan
@@ -1167,6 +1506,18 @@ CatCacheBase<CatCacheCls>::InsertCatalogEntries(
     FileId tabfid = tabdesc->GetTableEntry()->tabfid();
     auto tabfh = ((CatCacheCls*)this)->OpenCatalogFile(tabfid, tabdesc.get());
 
+    // find all the indexes of this table
+    std::vector<Oid> &&idxids = FindAllIndexesOfTable(systabid);
+
+    // open the systable and the indexes
+    std::vector<std::unique_ptr<Index>> indexes;
+    indexes.reserve(idxids.size());
+    for (Oid idxid: idxids) {
+        std::shared_ptr<const IndexDesc> idxdesc = FindIndexDesc(idxid);
+        ASSERT(idxdesc.get());
+        indexes.emplace_back(Index::Create(std::move(idxdesc)));
+    }
+
     // insert the records and update the indexes
     maxaligned_char_buf recbuf;
     recbuf.reserve(128);
@@ -1179,6 +1530,19 @@ CatCacheBase<CatCacheCls>::InsertCatalogEntries(
         Record rec(recbuf);
         // table insert
         ((CatCacheCls*)this)->AppendRecord(tabfh, rec);
+
+        // index update
+        for (std::unique_ptr<Index>& index: indexes) {
+            // XXX currently we will leave it in a half updated state
+            // if some of the unique index finds a duplicate key here.
+            // It's ok for the tests though.
+            // TODO It should be rolled back by txn.
+            if (!index->InsertRecord(rec)) {
+                LOG(kError, "inserting duplicate key in unique catalog index "
+                            "%s",
+                            index->GetIndexDesc()->GetIndexEntry()->idxname());
+            }
+        }
     }
     ((CatCacheCls*)this)->CloseCatalogFile(tabfh);
 }

@@ -189,5 +189,42 @@ VolatileCatCache::EndIterateCatEntry(CatFileIterator &iter) {
     iter.m_fid = 0;
 }
 
+BulkLoadIterator*
+VolatileCatCache::GetBulkLoadIterator(
+    FileHandle &fh,
+    std::shared_ptr<const TableDesc> tabdesc,
+    std::shared_ptr<const IndexDesc> idxdesc) {
+
+    CatFileIterator iter = IterateCatEntry(fh);
+    return new InmemFileBulkLoadIterator(std::move(idxdesc), std::move(tabdesc),
+                                         this, iter);
+    LOG(kFatal, "index support not available yet");
+    return nullptr;
+}
+
+bool
+VolatileCatCache::InmemFileBulkLoadIterator::Next() {
+    if (!m_vcatcache->NextCatEntry(m_iter)) {
+        if (m_recid.IsValid()) {
+            m_recid.SetInvalid();
+            m_data.clear();
+            IndexKey::Construct(m_key.get(), m_data);
+        }
+        return false;
+    }
+
+    m_data.clear();
+    const char *recbuf = m_vcatcache->GetCurrentCatEntry(m_iter);
+    const Schema *tab_schema = m_tabdesc->GetSchema();
+    for (FieldId i = 0; i < m_key_schema->GetNumFields(); ++i) {
+        FieldId idxcoltabcolid = m_idxdesc->GetIndexColumnEntry(i)
+            ->idxcoltabcolid();
+        m_data.emplace_back(tab_schema->GetField(idxcoltabcolid, recbuf));
+    }
+    IndexKey::Construct(m_key.get(), m_data);
+    m_recid = m_vcatcache->GetCurrentCatEntryRecordId(m_iter);
+    return true;
+}
+
 }   // namespace taco
 

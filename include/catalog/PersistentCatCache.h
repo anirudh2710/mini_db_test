@@ -8,6 +8,7 @@
 #include "storage/FileManager.h"
 #include "storage/Record.h"
 #include "storage/Table.h"
+#include "index/BulkLoadIterator.h"
 
 namespace taco {
 
@@ -144,6 +145,14 @@ private:
      * Releses any resource associated with the catalog file iterator.
      */
     void EndIterateCatEntry(CatFileIterator &iter);
+
+    /*!
+     * Returns a BulkLoadIterator for bulk loading a systable index.
+     */
+    BulkLoadIterator *GetBulkLoadIterator(
+        FileHandle &fh,
+        std::shared_ptr<const TableDesc> tabdesc,
+        std::shared_ptr<const IndexDesc> idxdesc);
 
     /*!
      * Creates the Table object in the file handle using a fake table

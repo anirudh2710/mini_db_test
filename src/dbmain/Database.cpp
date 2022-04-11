@@ -12,6 +12,11 @@
 #include "utils/builtin_funcs.h"
 #include "utils/fsutils.h"
 
+#include "index/Index.h"
+#include "index/idxtyps.h"
+#include "index/TableBulkLoadIterator.h"
+#include "index/volatiletree/VolatileTree.h"
+
 ABSL_FLAG(std::string, init_data,
           BUILDDIR "/generated_source/catalog/systables/init.dat",
           "The path to the init data file init.dat");
@@ -25,7 +30,7 @@ static bool s_init_global_called = false;
 bool g_test_no_bufman = false;
 bool g_test_no_catcache = false;
 
-bool g_test_no_index = true;
+bool g_test_no_index = false;
 
 bool g_test_catcache_use_volatiletree = false;
 
@@ -76,6 +81,8 @@ Database::open(const std::string &path,
         m_buf_manager = nullptr;
     }
 
+    InitVolatileTree();
+
     if (!g_test_no_catcache) {
         m_catcache = new CatCache();
         if (create) {
@@ -99,6 +106,8 @@ Database::close()
         delete m_catcache;
         m_catcache = nullptr;
     }
+
+    CleanVolatileTree();
 
     if (m_buf_manager)
     {
@@ -154,7 +163,41 @@ Database::CreateIndex(absl::string_view idxname,
                       std::vector<FieldId> idxcoltabcolids,
                       std::vector<Oid> idxcolltfuncids,
                       std::vector<Oid> idxcoleqfuncids) {
-    LOG(kFatal, "not available until btree project");
+    std::shared_ptr<const TableDesc> tabdesc =
+        catcache()->FindTableDesc(idxtabid);
+    if (!tabdesc) {
+        LOG(kError, "table " OID_FORMAT " not found", idxtabid);
+    }
+
+    FileId idxfid;
+    if (IdxTypeIsVolatile(idxtyp)) {
+        idxfid = INVALID_FID;
+    } else {
+        std::unique_ptr<File> f = file_manager()->Open(NEW_REGULAR_FID);
+        idxfid = f->GetFileId();
+    }
+
+    // add it to the catalog
+    Oid idxid = catcache()->AddIndex(idxname,
+                                     idxtabid,
+                                     idxtyp,
+                                     idxunique,
+                                     std::move(idxcoltabcolids),
+                                     idxfid,
+                                     idxcolltfuncids,
+                                     idxcoleqfuncids);
+    // initializes the index
+    std::shared_ptr<const IndexDesc> idxdesc = catcache()->FindIndexDesc(idxid);
+    ASSERT(idxdesc.get());
+    Index::Initialize(idxdesc.get());
+
+    // bulk load the index
+    std::unique_ptr<Table> table = Table::Create(std::move(tabdesc));
+    ASSERT(table.get());
+    std::unique_ptr<Index> index = Index::Create(idxdesc);
+    ASSERT(index.get());
+    TableBulkLoadIterator tabiter(std::move(idxdesc), table->StartScan());
+    index->BulkLoad(tabiter);
 }
 
 }   // namespace taco
