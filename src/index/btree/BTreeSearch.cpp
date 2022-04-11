@@ -52,6 +52,14 @@ BTree::BTreeTupleCompare(const IndexKey *key,
     return temp;
 }
 
+SlotId
+BTree::BinarySearchOnPage(char *buf,
+                          const IndexKey *key,
+                          const RecordId &recid) {
+    VarlenDataPage varlen(buf);
+    BTreePageHeaderData *head = (BTreePageHeaderData *) varlen.GetUserData();
+    
+}
 
 BufferId
 BTree::FindLeafPage(const IndexKey *key,
