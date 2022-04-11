@@ -1,9 +1,9 @@
 #include "storage/VarlenDataPage.h"
-#include <queue>
+
 #include "storage/FileManager.h"
-#include "utils/zerobuf.h"
 
 namespace taco {
+
 /*!
  * The page header of a variable-length record data page.
  *
@@ -24,300 +24,479 @@ namespace taco {
  * (SlotData*)(page_pointer + PAGE_SIZE)`.
  *
  */
-    struct VarlenDataPageHeader {
-        //! The file manager managed page header. Do not modify.
-        PageHeaderData  m_ph;
+struct VarlenDataPageHeader {
+    //! The file manager managed page header. Do not modify.
+    PageHeaderData  m_ph;
 
-        //! The size of the header including the user data area.
-        FieldOffset     m_ph_sz;
+    //! The size of the header including the user data area.
+    FieldOffset     m_ph_sz;
 
-        //! The offset to the beginning of the free space.
-        FieldOffset     m_fs_begin;
+    //! The offset to the beginning of the free space.
+    FieldOffset     m_fs_begin;
 
-        /*!
-         * Whether there might be some free space among the occupied space after
-         * the last compaction. It can be an approximation but setting it to true
-         * too aggresively may result in too many space compaction calls.
-         */
-        bool            m_has_hole : 1;
+    /*!
+     * Whether there might be some free space among the occupied space after
+     * the last compaction. It can be an approximation but setting it to true
+     * too aggresively may result in too many space compaction calls.
+     */
+    bool            m_has_hole : 1;
 
-        // reserved
-        bool            : 1;
+    // reserved
+    bool            : 1;
 
-        //! Number of items on this page.
-        SlotId          m_cnt : 14;
+    //! Number of items on this page.
+    SlotId          m_cnt : 14;
 
-        // reserved
-        SlotId          :2;
+    // reserved
+    SlotId          :2;
 
-        //! Number of slots in the slot array.
-        SlotId          m_nslots : 14;
-    };
+    //! Number of slots in the slot array.
+    SlotId          m_nslots : 14;
+};
 
 // max-aligned
-    static constexpr size_t VarlenDataPageHeaderSize =
-            MAXALIGN(sizeof(VarlenDataPageHeader));
+static constexpr size_t VarlenDataPageHeaderSize =
+    MAXALIGN(sizeof(VarlenDataPageHeader));
 
 // we can manage to squeeze everything into 8 bytes after the page header.
-    static_assert(VarlenDataPageHeaderSize == MAXALIGN(8 + sizeof(PageHeaderData)));
+static_assert(VarlenDataPageHeaderSize == MAXALIGN(8 + sizeof(PageHeaderData)));
 
 /*!
  * Describes a slot. An invalid slot has an m_off == 0.
  */
-    struct SlotData {
-        //! The offset to the record.
-        FieldOffset     m_off;
+struct SlotData {
+    //! The offset to the record.
+    FieldOffset     m_off;
 
-        //! The length of the record.
-        FieldOffset     m_len;
+    //! The length of the record.
+    FieldOffset     m_len;
 
-        constexpr bool
-        IsValid() const {
-            return m_off != 0;
-        }
-    };
-    static SlotId firstFreeSlotId = 0;
-    VarlenDataPageHeader *header;
-    VarlenDataPage* VarlenDataPage::m_obj = NULL;
-    void
-    VarlenDataPage::InitializePage(char *pagebuf, FieldOffset usr_data_sz) {
-        FieldOffset headerSize = MAXALIGN(VarlenDataPageHeaderSize+usr_data_sz);
-        if( headerSize >= PAGE_SIZE){
-            LOG(kError, "No space");
-            return;
-        }
-        header = ((struct VarlenDataPageHeader*)pagebuf);
-        header->m_ph_sz = headerSize;
-        header->m_has_hole = false;
-        header->m_cnt = 0;
-        header->m_nslots = 0;
-        header->m_fs_begin =headerSize;
-        firstFreeSlotId = 0;
+    constexpr bool
+    IsValid() const {
+        return m_off != 0;
+    }
+};
+
+void
+VarlenDataPage::InitializePage(char *pagebuf, FieldOffset usr_data_sz) {
+    // TODO implement it
+
+
+    if (usr_data_sz > (FieldOffset) PAGE_SIZE ||
+        MAXALIGN(VarlenDataPageHeaderSize + usr_data_sz) + MAXALIGN_OF +
+        MAXALIGN(sizeof(SlotData)) > (FieldOffset) PAGE_SIZE) {
+        LOG(kError, "The given user data size " FIELDOFFSET_FORMAT " is too "
+                    "large for the page to fit at least one record.",
+                    usr_data_sz);
     }
 
+    VarlenDataPageHeader *hdr = (VarlenDataPageHeader *) pagebuf;
+    hdr->m_ph_sz = MAXALIGN(VarlenDataPageHeaderSize + usr_data_sz);
+    hdr->m_fs_begin = hdr->m_ph_sz;
+    hdr->m_has_hole = false;
+    hdr->m_cnt = 0;
+    hdr->m_nslots = 0;
+}
 
-    VarlenDataPage::VarlenDataPage(char *pagebuf, FieldOffset usr_data_sz) {
-        m_pagebuf = pagebuf;
-        m_usr_data_sz = usr_data_sz;
+
+VarlenDataPage::VarlenDataPage(char *pagebuf):
+    // TODO implement it
+    m_pagebuf(pagebuf) {
+}
+
+
+char*
+VarlenDataPage::GetUserData() const {
+    // TODO implement it
+    return m_pagebuf + VarlenDataPageHeaderSize;
+}
+
+SlotId
+VarlenDataPage::GetMaxSlotId() const {
+    // TODO implement it
+    return ((VarlenDataPageHeader *) m_pagebuf)->m_nslots + MinSlotId - 1;
+}
+
+SlotId
+VarlenDataPage::GetRecordCount() const {
+    // TODO implement it
+    return ((VarlenDataPageHeader *) m_pagebuf)->m_cnt;
+}
+
+char *
+VarlenDataPage::GetRecordBuffer(SlotId sid, FieldOffset *p_len) const {
+    CheckSID(sid);
+
+    // TODO implement it
+    SlotData *slot_data;
+
+
+    slot_data= GetSlotArray() - sid;
+    if (p_len) {
+        *p_len = slot_data->m_len;
     }
-
-    char*
-    VarlenDataPage::GetUserData() const {
-        if(m_pagebuf) return (char*)(m_pagebuf+VarlenDataPageHeaderSize);
+    if (slot_data->m_off == 0) {
         return nullptr;
     }
 
-    SlotId
-    VarlenDataPage::GetMaxSlotId() const {
-        for(SlotId sid = header->m_nslots;sid>0;sid--){
-            SlotData* data = (SlotData*)(m_pagebuf+PAGE_SIZE-sizeof(SlotData)*sid);
-            if(data->IsValid()){
-                return sid;
+    return m_pagebuf + slot_data->m_off;
+}
+
+bool
+VarlenDataPage::IsOccupied(SlotId sid) const {
+    CheckSID(sid);
+
+    SlotData *slot_data;
+    slot_data = GetSlotArray() - sid;
+
+
+    return slot_data->m_off != 0;
+}
+
+void
+VarlenDataPage::CompactSpace() {
+    VarlenDataPageHeader *hdr = (VarlenDataPageHeader *) m_pagebuf;
+    ASSERT(hdr->m_has_hole);
+
+    SlotData *slot = GetSlotArray();
+    SlotId max_sid = GetMaxSlotId();
+
+    // sort all valid slot ID in increasing offset order
+    std::vector<SlotId> sorted_sid;
+    sorted_sid.reserve(hdr->m_cnt);
+    for (SlotId sid = MinSlotId; sid <= max_sid; ++sid) {
+        if (slot[-sid].m_off != 0) {
+            sorted_sid.push_back(sid);
+        }
+    }
+    std::sort(sorted_sid.begin(), sorted_sid.end(),
+        [=](SlotId sid1, SlotId sid2) -> bool {
+            return slot[-sid1].m_off <
+                   slot[-sid2].m_off;
+        });
+
+    FieldOffset new_fs_begin = hdr->m_ph_sz;
+    for (size_t i = 0; i < sorted_sid.size(); ++i) {
+        SlotId sid = sorted_sid[i];
+        FieldOffset &off = slot[-sid].m_off;
+        FieldOffset len = slot[-sid].m_len;
+        ASSERT(off >= new_fs_begin);
+        if (off > new_fs_begin) {
+            ASSERT(off > new_fs_begin);
+            std::memmove(m_pagebuf + new_fs_begin, m_pagebuf + off, len);
+        }
+        off = new_fs_begin;
+        new_fs_begin = MAXALIGN(new_fs_begin + len);
+    }
+
+    ASSERT(new_fs_begin <= hdr->m_fs_begin);
+    hdr->m_fs_begin = new_fs_begin;
+    hdr->m_has_hole = false;
+}
+
+bool
+VarlenDataPage::InsertRecord(Record &rec) {
+    // TODO implement it
+    SlotId sid;
+    SlotData *slot_data = GetSlotArray();
+
+    SlotId max_sid = GetMaxSlotId();
+    
+     VarlenDataPageHeader *head = (VarlenDataPageHeader *) m_pagebuf;
+
+    
+    
+    if (head->m_cnt == head->m_nslots) {
+        sid = max_sid;
+    } else {
+        for (sid = MinSlotId; sid < max_sid; ++sid) {
+            if (slot_data[-sid].m_off == 0) {
+                break;
             }
         }
-        return INVALID_SID;
+        ASSERT(sid < max_sid);
     }
 
-    SlotId
-    VarlenDataPage::GetRecordCount() const {
-        return header->m_cnt;
-    }
+    bool allocateslot = (sid == max_sid);
+    if (allocateslot)
+        ++sid;
 
-    char *
-    VarlenDataPage::GetRecordBuffer(SlotId sid, FieldOffset *p_len) const {
-        CheckSID(sid);
-        SlotData *slotData = (SlotData*)(m_pagebuf+PAGE_SIZE-sizeof(SlotData)*sid);
-        char *temp = (char*)malloc(slotData->m_len);
-        if(p_len!=nullptr)
-            *p_len = slotData->m_len;
-        return (char*)(m_pagebuf+slotData->m_off);
-    }
+    FieldOffset slot_array_end =
+        PAGE_SIZE - sizeof(SlotData) * head->m_nslots;
+    if (allocateslot)
+        slot_array_end -= sizeof(SlotData);
 
-    bool
-    VarlenDataPage::IsOccupied(SlotId sid) const {
-        CheckSID(sid);
-        SlotData *slotData = (SlotData*)(m_pagebuf+PAGE_SIZE-sizeof(SlotData)*sid);
-        return slotData->m_off!=0;
-    }
+    FieldOffset available_space = MAXALIGN_DOWN(slot_array_end) - head->m_fs_begin;
+    FieldOffset reclen = MAXALIGN(rec.GetLength());
+    if (reclen > available_space) {
+        if (head->m_has_hole) {
 
-    void
-    VarlenDataPage::compactPage(){
-        VarlenDataPageHeader* pagebuff = (VarlenDataPageHeader*)m_pagebuf;
-        struct SlotPtrCmpOffst {
-            bool operator() (SlotData* const &a, SlotData* const &b) {
-                return a->m_off > b->m_off;
+            CompactSpace();
+            available_space = MAXALIGN_DOWN(slot_array_end) - head->m_fs_begin;
+            if (reclen > available_space) {
+  
+                rec.GetRecordId().sid = INVALID_SID;
+                return true;
             }
-        };
-        std::priority_queue<SlotData*, std::vector<SlotData*>, SlotPtrCmpOffst> slotPtrs;
-        for(SlotId slotID = 1; slotID <= pagebuff->m_nslots; slotID++) {
-            SlotData* sd = (SlotData*)(m_pagebuf+PAGE_SIZE-sizeof(SlotData)*slotID);
-            SlotData& slot = *sd;
-            if (slot.IsValid())
-                slotPtrs.push(&slot);
-        }
-        FieldOffset offset = pagebuff->m_ph_sz;
-        while (!slotPtrs.empty()) {
-            SlotData* slot = slotPtrs.top();
-            slotPtrs.pop();
-            if (slot->m_len == 0)
-                continue;
-            memmove((void*)pagebuff+offset, (void*)pagebuff+slot->m_off, slot->m_len);
-            slot->m_off = offset;
-            offset = MAXALIGN(offset+slot->m_len);
-        }
-        pagebuff->m_fs_begin = offset;
+        } else {
 
+            rec.GetRecordId().sid = INVALID_SID;
+            return false;
+        }
     }
 
-    bool
-    VarlenDataPage::InsertRecord(Record &rec, SlotId sid) {
-        VarlenDataPageHeader* pagebuff = (VarlenDataPageHeader*)m_pagebuf;
-        FieldOffset lengthOfRecord = rec.GetLength();
-        FieldOffset nextFreeSpaceForSlot = PAGE_SIZE - sizeof(SlotData) * (pagebuff->m_nslots);
-        FieldOffset nextFreeSpaceForRecord = pagebuff->m_fs_begin;
+    if (allocateslot) {
+        ++head->m_nslots;
+        ASSERT(sid == head->m_nslots - 1 + MinSlotId);
+    }
+    PutRecordIntoSlot(sid, rec);
+    return true;
+}
 
-        FieldOffset fsBeginAfterAddingRecord = MAXALIGN(lengthOfRecord+nextFreeSpaceForRecord);
-        if(fsBeginAfterAddingRecord>nextFreeSpaceForSlot)
-            compactPage();
+void
+VarlenDataPage::PutRecordIntoSlot(SlotId sid, Record &rec) {
+    VarlenDataPageHeader *hdr = (VarlenDataPageHeader *) m_pagebuf;
+    SlotData *slot = GetSlotArray();
+    ASSERT(MAXALIGN_DOWN((FieldOffset) PAGE_SIZE
+                         - (FieldOffset) sizeof(SlotData) * hdr->m_nslots)
+            - hdr->m_fs_begin >= rec.GetLength());
+    slot[-sid].m_off = hdr->m_fs_begin;
+    slot[-sid].m_len = rec.GetLength();
+    std::memcpy(m_pagebuf + hdr->m_fs_begin, rec.GetData(), rec.GetLength());
+    hdr->m_fs_begin = hdr->m_fs_begin + MAXALIGN(rec.GetLength());
+    ++hdr->m_cnt;
+    rec.GetRecordId().sid = sid;
+}
 
-        nextFreeSpaceForRecord = pagebuff->m_fs_begin;
-        fsBeginAfterAddingRecord = MAXALIGN(lengthOfRecord+nextFreeSpaceForRecord);
-
-        if((fsBeginAfterAddingRecord <= nextFreeSpaceForSlot)||(firstFreeSlotId!=0 && firstFreeSlotId <= pagebuff->m_nslots)){
-            memcpy(m_pagebuf+nextFreeSpaceForRecord, rec.GetData(), lengthOfRecord);
-            rec.GetRecordId().sid = sid;
-            SlotData *slotData = (SlotData*)(m_pagebuf+PAGE_SIZE-sizeof(SlotData)*sid);
-            slotData->m_len = lengthOfRecord;
-            slotData->m_off = nextFreeSpaceForRecord;
-            pagebuff->m_fs_begin = MAXALIGN(lengthOfRecord+nextFreeSpaceForRecord);
-            return true;
-        }
-        rec.GetRecordId().sid = INVALID_SID;
+bool
+VarlenDataPage::EraseRecord(SlotId sid) {
+    // TODO implement it
+    if (!IsOccupied(sid)) 
+    {
         return false;
     }
 
-    bool
-    VarlenDataPage::InsertRecord(Record &rec) {
-        VarlenDataPageHeader* pagebuff = (VarlenDataPageHeader*)m_pagebuf;
-        FieldOffset lengthOfRecord = rec.GetLength();
-        FieldOffset nextFreeSpaceForSlot = PAGE_SIZE - sizeof(SlotData) * (pagebuff->m_nslots+1);
-        FieldOffset nextFreeSpaceForRecord = pagebuff->m_fs_begin;
+    VarlenDataPageHeader *head = (VarlenDataPageHeader *) m_pagebuf;
+    SlotData *slot_data = GetSlotArray() - sid;
 
-        FieldOffset fsBeginAfterAddingRecord = MAXALIGN(lengthOfRecord+nextFreeSpaceForRecord);
-        FieldOffset nextFreeSpaceForSlotAfterAddingSlot = nextFreeSpaceForSlot - (sizeof(SlotData));
-        if(fsBeginAfterAddingRecord>nextFreeSpaceForSlotAfterAddingSlot)
-            compactPage();
+    if (MAXALIGN(slot_data->m_off + slot_data->m_len) != head->m_fs_begin) 
+    {
+        head->m_has_hole = true;
+    } 
 
-        nextFreeSpaceForRecord = pagebuff->m_fs_begin;
-        fsBeginAfterAddingRecord = MAXALIGN(lengthOfRecord+nextFreeSpaceForRecord);
-        if((fsBeginAfterAddingRecord <= nextFreeSpaceForSlot)||(firstFreeSlotId!=0 && firstFreeSlotId <= pagebuff->m_nslots)){
-            SlotId sid = INVALID_SID;
-            if(firstFreeSlotId!=0 && firstFreeSlotId <= pagebuff->m_nslots){
-                sid = firstFreeSlotId;
+    else 
+    {
+        head->m_fs_begin = slot_data->m_off;
+    }
 
-                SlotId i = sid+1;
-                for(;i<=pagebuff->m_nslots;i++){
-                    SlotData* data = (SlotData*)(m_pagebuf+PAGE_SIZE-sizeof(SlotData)*i);
-                    if(!data->IsValid()){
-                        break;
-                    }
-                }
-                firstFreeSlotId = i;
-            }else{
-                pagebuff->m_nslots++;
-                sid = pagebuff->m_nslots;
-                firstFreeSlotId = pagebuff->m_nslots+1;
-                SlotData *sd = new SlotData();
-                memcpy(m_pagebuf+nextFreeSpaceForSlot, sd, sizeof(SlotData));
-            }
-            memcpy(m_pagebuf+nextFreeSpaceForRecord, rec.GetData(), lengthOfRecord);
-            rec.GetRecordId().sid = sid;
-            SlotData* sd = (SlotData*)(m_pagebuf+PAGE_SIZE-sizeof(SlotData)*sid);
-            sd->m_len = lengthOfRecord;
-            sd->m_off = nextFreeSpaceForRecord;
-            pagebuff->m_cnt++;
-            pagebuff->m_fs_begin = MAXALIGN(lengthOfRecord+nextFreeSpaceForRecord);
-            return true;
+    slot_data->m_off = 0;
+    slot_data->m_len = 0;
+    --head->m_cnt;
+
+    if (head->m_nslots == sid) 
+    {
+        while (head->m_nslots > 0 && !slot_data->IsValid())
+        {
+            --head->m_nslots;
+            ++slot_data;
         }
-        rec.GetRecordId().sid = INVALID_SID;
+    }
+    return true;
+}
+
+bool
+VarlenDataPage::UpdateRecord(SlotId sid, Record &rec) {
+    // TODO implement it
+
+
+    FieldOffset rec_length = MAXALIGN(rec.GetLength());
+
+    VarlenDataPageHeader *head = (VarlenDataPageHeader *) m_pagebuf;
+
+    if (head->m_ph_sz + rec_length +
+        MAXALIGN(sizeof(SlotData)) > (FieldOffset) PAGE_SIZE) {
         return false;
     }
 
-    bool
-    VarlenDataPage::EraseRecord(SlotId sid) {
-        CheckSID(sid);
-        VarlenDataPageHeader* pagebuff = (VarlenDataPageHeader*)m_pagebuf;
-        if(sid>pagebuff->m_nslots) return false;
-        SlotData *slotData = (SlotData*)(m_pagebuf+PAGE_SIZE-sizeof(SlotData)*sid);
-        if(slotData->m_off==0) return false;
-        slotData->m_off=0;
-        slotData->m_len=0;
-        pagebuff->m_cnt--;
-        if(sid<firstFreeSlotId)
-            firstFreeSlotId = sid;
+    SlotData *slot_data = GetSlotArray() - sid;
+
+    if (rec_length <= MAXALIGN(slot_data->m_len)) {
+        memcpy(m_pagebuf + slot_data->m_off, rec.GetData(), rec.GetLength());
+
+        if (rec_length <= MAXALIGN_DOWN(slot_data->m_len - 1)) {
+            
+            if (slot_data->m_off + MAXALIGN(slot_data->m_len) != head->m_fs_begin) 
+            
+            {
+                head->m_has_hole = true;
+            } 
+            
+            else 
+            {
+                head->m_fs_begin = slot_data->m_off + rec_length;
+            }
+        }
+        rec.GetRecordId().sid = sid;
+
+
+        slot_data->m_len = rec.GetLength();
+        
         return true;
     }
 
-    bool
-    VarlenDataPage::UpdateRecord(SlotId sid, Record &rec) {
-        CheckSID(sid);
-        if(rec.GetLength()>=PAGE_SIZE){
-            return false;  
-        } 
-        VarlenDataPageHeader* pagebuff = (VarlenDataPageHeader*)m_pagebuf;
-        if(sid>pagebuff->m_nslots){
-            LOG(kError, "Invalid sid while updating record");
-            return false;
-        } 
-        SlotData *slotData = (SlotData*)(m_pagebuf+PAGE_SIZE-sizeof(SlotData)*sid);
-        if(!slotData->IsValid()){
-            LOG(kError, "SlotId  is not occupied");
-            return false;
-        }
-        if(rec.GetLength()<=slotData->m_len){
-            memcpy(m_pagebuf+slotData->m_off, rec.GetData(), rec.GetLength());
-            slotData->m_len = rec.GetLength();
-            rec.GetRecordId().sid  = sid;
+
+    FieldOffset slot_array_end =
+        MAXALIGN_DOWN(PAGE_SIZE - sizeof(SlotData) * head->m_nslots);
+
+
+    if (slot_data->m_off + MAXALIGN(slot_data->m_len) == head->m_fs_begin) 
+    {
+        FieldOffset aspace = slot_array_end - slot_data->m_off;
+
+        if (rec_length <= aspace) 
+        {
+            memcpy(m_pagebuf + slot_data->m_off, rec.GetData(), rec.GetLength());
+
+            slot_data->m_len = rec.GetLength();
+
+            head->m_fs_begin = slot_data->m_off + rec_length;
+
+            rec.GetRecordId().sid = sid;
             return true;
         }
-        FieldOffset backupOffset = slotData->m_off;
-        slotData->m_off = 0;
-        FieldOffset backupLength = slotData->m_len;
-        slotData->m_len = 0;
-        if(InsertRecord(rec, sid)){
+    } else {
+        FieldOffset aspace = slot_array_end - head->m_fs_begin;
+
+        if (rec_length <= aspace) 
+        {
+            slot_data->m_off = head->m_fs_begin;
+            slot_data->m_len = rec.GetLength();
+            memcpy(m_pagebuf + head->m_fs_begin, rec.GetData(), rec.GetLength());
+            head->m_fs_begin = head->m_fs_begin + rec_length;
+            head->m_has_hole = true;
+            rec.GetRecordId().sid = sid;
             return true;
         }
-        slotData->m_off = backupOffset;
-        slotData->m_len = backupLength;
-        EraseRecord(sid);
-        rec.GetRecordId().sid = INVALID_SID;
-        return true;
+    }
+    slot_data->m_off = 0;
+    slot_data->m_len = 0;
+    if (head->m_has_hole) {
+        CompactSpace();
+        FieldOffset aspace = slot_array_end - head->m_fs_begin;
+        if (rec_length <= aspace) {
+            slot_data->m_off = head->m_fs_begin;
+            slot_data->m_len = rec.GetLength();
+            memcpy(m_pagebuf + head->m_fs_begin, rec.GetData(), rec.GetLength());
+            head->m_fs_begin = head->m_fs_begin + rec_length;
+            rec.GetRecordId().sid = sid;
+            return true;
+        }
     }
 
-    bool
-    VarlenDataPage::InsertRecordAt(SlotId sid, Record &rec) {
-        if (sid < GetMinSlotId() || sid > GetMaxSlotId() + 1) {
-            LOG(kError, "sid is out of range, got " SLOTID_FORMAT " but "
-                                                                  "expecting in [" SLOTID_FORMAT ", " SLOTID_FORMAT "]",
+    if (sid == head->m_nslots) {
+        while (head->m_nslots > 0 && !slot_data->IsValid()) {
+            --head->m_nslots;
+            ++slot_data;
+        }
+    }
+    --head->m_cnt;
+    rec.GetRecordId().sid = INVALID_SID;
+    return true;
+}
+
+bool
+VarlenDataPage::InsertRecordAt(SlotId sid, Record &rec) {
+    if (sid < GetMinSlotId() || sid > GetMaxSlotId() + 1) {
+        LOG(kError, "sid is out of range, got " SLOTID_FORMAT " but "
+                    "expecting in [" SLOTID_FORMAT ", " SLOTID_FORMAT "]",
                     sid, GetMinSlotId(), GetMaxSlotId() + 1);
+    }
+
+    // No need to implement it at this point in Project heap file
+    VarlenDataPageHeader *head = (VarlenDataPageHeader *) m_pagebuf;
+    FieldOffset slot_array_end = PAGE_SIZE - sizeof(SlotData) * (head->m_nslots+1);
+    FieldOffset aspace = MAXALIGN_DOWN(slot_array_end) - head->m_fs_begin;
+    FieldOffset rec_length = MAXALIGN(rec.GetLength());
+    
+    
+    if (rec_length > aspace) {
+
+        if (head->m_has_hole) {
+            CompactSpace();
+            aspace = MAXALIGN_DOWN(slot_array_end) - head->m_fs_begin;
+
+            if (rec_length > aspace) {
+                rec.GetRecordId().sid = INVALID_SID;
+                return true;
+            }
+        } else {
+            rec.GetRecordId().sid = INVALID_SID;
+            return false;
         }
-        return false;
     }
 
-    void
-    VarlenDataPage::RemoveSlot(SlotId sid) {
-        CheckSID(sid);
+    int count =GetMaxSlotId()+1;
+    if(sid <= GetMaxSlotId() && IsOccupied(sid)){
+
+        SlotData *slot_data = GetSlotArray();
+
+        while(count >sid) {
+            Record rec = GetRecord(count-1);
+            rec.GetRecordId().sid = count;
+            slot_data[-count].m_off = slot_data[-(count-1)].m_off;
+            slot_data[-count].m_len = slot_data[-(count-1)].m_len;
+            count--;
+        }
+    }
+    ++head->m_nslots;
+    PutRecordIntoSlot(sid, rec);
+    return true;
+}
+
+void
+VarlenDataPage::RemoveSlot(SlotId sid) {
+    CheckSID(sid);
+    int count =sid;
+    VarlenDataPageHeader *head = (VarlenDataPageHeader *) m_pagebuf;
+    SlotData *slot = GetSlotArray();
+    
+    while(count<GetMaxOccupiedSlotId()){
+        Record rec = GetRecord(count);
+        std::memmove((void*)(m_pagebuf + slot[-count].m_off), (void*)(m_pagebuf+slot[-(count+1)].m_off), slot[-(count+1)].m_len);
+        RecordId r_id = rec.GetRecordId();
+        r_id.sid = count;
+
+        slot[-(count)].m_off = slot[-(count+1)].m_off;
+        slot[-(count)].m_len = slot[-(count+1)].m_len;
+        count++;
     }
 
-    void
-    VarlenDataPage::ShiftSlots(SlotId n, bool truncate) {
-    }
+    head->m_fs_begin = *m_pagebuf + slot[-(count-1)].m_off+slot[-(count-1)].m_len;
 
-    FieldOffset
-    VarlenDataPage::ComputeFreeSpace(FieldOffset usr_data_sz,
-                                     SlotId num_recs,
-                                     FieldOffset total_reclen) {
-        return -1;
-    }
+    slot[-count].m_off = 0;
+    slot[-count].m_off = 0;
+    --head->m_cnt;
+    --head->m_nslots;
+    // No need to implement it at this point in Project heap file
+}
+
+void
+VarlenDataPage::ShiftSlots(SlotId n, bool truncate) {
+    // No need to implement it at this point in Project heap file
+    // Hint: don't forget to update m_has_hole in the page header
+    //
+    // This is part of the bonus project for b-tree page rebalancing. No need
+    // to implement this function if you do not want to implement b-tree page
+    // rebalancing.
+}
+
+FieldOffset
+VarlenDataPage::ComputeFreeSpace(FieldOffset usr_data_sz,
+                                 SlotId num_recs,
+                                 FieldOffset total_reclen) {
+    // No need to implement it at this point in Project heap file
+    FieldOffset val =  PAGE_SIZE - (VarlenDataPageHeaderSize + usr_data_sz + total_reclen + sizeof(SlotData)*num_recs);
+    return (val <= 0) ? -1 : val;
+}
 
 }   // namespace taco
