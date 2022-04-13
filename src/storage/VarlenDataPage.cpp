@@ -255,16 +255,19 @@ VarlenDataPage::InsertRecord(Record &rec) {
 
 void
 VarlenDataPage::PutRecordIntoSlot(SlotId sid, Record &rec) {
-    VarlenDataPageHeader *hdr = (VarlenDataPageHeader *) m_pagebuf;
-    SlotData *slot = GetSlotArray();
+    SlotData *slot_data;
+    VarlenDataPageHeader *head = (VarlenDataPageHeader *) m_pagebuf;
+
+    slot_data = GetSlotArray();
+
     ASSERT(MAXALIGN_DOWN((FieldOffset) PAGE_SIZE
-                         - (FieldOffset) sizeof(SlotData) * hdr->m_nslots)
-            - hdr->m_fs_begin >= rec.GetLength());
-    slot[-sid].m_off = hdr->m_fs_begin;
-    slot[-sid].m_len = rec.GetLength();
-    std::memcpy(m_pagebuf + hdr->m_fs_begin, rec.GetData(), rec.GetLength());
-    hdr->m_fs_begin = hdr->m_fs_begin + MAXALIGN(rec.GetLength());
-    ++hdr->m_cnt;
+                         - (FieldOffset) sizeof(SlotData) * head->m_nslots)
+            - head->m_fs_begin >= rec.GetLength());
+    slot_data[-sid].m_off = head->m_fs_begin;
+    slot_data[-sid].m_len = rec.GetLength();
+    std::memcpy(m_pagebuf + head->m_fs_begin, rec.GetData(), rec.GetLength());
+    head->m_fs_begin = head->m_fs_begin + MAXALIGN(rec.GetLength());
+    ++head->m_cnt;
     rec.GetRecordId().sid = sid;
 }
 
@@ -411,8 +414,6 @@ VarlenDataPage::InsertRecordAt(SlotId sid, Record &rec) {
                     "expecting in [" SLOTID_FORMAT ", " SLOTID_FORMAT "]",
                     sid, GetMinSlotId(), GetMaxSlotId() + 1);
     }
-
-    // No need to implement it at this point in Project heap file
     VarlenDataPageHeader *head = (VarlenDataPageHeader *) m_pagebuf;
     FieldOffset slot_array_end = PAGE_SIZE - sizeof(SlotData) * (head->m_nslots+1);
     FieldOffset aspace = MAXALIGN_DOWN(slot_array_end) - head->m_fs_begin;
@@ -477,24 +478,16 @@ VarlenDataPage::RemoveSlot(SlotId sid) {
     slot[-count].m_off = 0;
     --head->m_cnt;
     --head->m_nslots;
-    // No need to implement it at this point in Project heap file
 }
 
 void
 VarlenDataPage::ShiftSlots(SlotId n, bool truncate) {
-    // No need to implement it at this point in Project heap file
-    // Hint: don't forget to update m_has_hole in the page header
-    //
-    // This is part of the bonus project for b-tree page rebalancing. No need
-    // to implement this function if you do not want to implement b-tree page
-    // rebalancing.
 }
 
 FieldOffset
 VarlenDataPage::ComputeFreeSpace(FieldOffset usr_data_sz,
                                  SlotId num_recs,
                                  FieldOffset total_reclen) {
-    // No need to implement it at this point in Project heap file
     FieldOffset val =  PAGE_SIZE - (VarlenDataPageHeaderSize + usr_data_sz + total_reclen + sizeof(SlotData)*num_recs);
     return (val <= 0) ? -1 : val;
 }

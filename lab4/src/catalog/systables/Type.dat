@@ -1,0 +1,130 @@
+// Data file for the Type catalog
+
+{
+    typid: 100, typname: "OID", typlen: 4, typalign: 4,
+    typisvarlen: false, typinfunc: OID_in, typoutfunc: OID_out,
+    typbyref: false
+},
+
+{
+    typid: 101, typname: "BOOL", typlen: 1, typalign: 1,
+    typisvarlen: false, typinfunc: BOOL_in, typoutfunc: BOOL_out,
+    typbyref: false
+},
+
+{
+    typid: 102, typname: "INT1", typlen: 1, typalign: 1,
+    typisvarlen: false, typinfunc: INT1_in, typoutfunc: INT1_out,
+    typbyref: false
+},
+
+{
+    typid: 103, typname: "INT2", typlen: 2, typalign: 2,
+    typisvarlen: false, typinfunc: INT2_in, typoutfunc: INT2_out,
+    typbyref: false
+},
+
+{
+    typid: 104, typname: "INT4", typlen: 4, typalign: 4,
+    typisvarlen: false, typinfunc: INT4_in, typoutfunc: INT4_out,
+    typbyref: false
+},
+
+{
+    typid: 105, typname: "INT8", typlen: 8, typalign: 8,
+    typisvarlen: false, typinfunc: INT8_in, typoutfunc: INT8_out,
+    typbyref: false
+},
+
+{
+    typid: 106, typname: "UINT1", typlen: 1, typalign: 1,
+    typisvarlen: false, typinfunc: UINT1_in, typoutfunc: UINT1_out,
+    typbyref: false
+},
+
+{
+    typid: 107, typname: "UINT2", typlen: 2, typalign: 2,
+    typisvarlen: false, typinfunc: UINT2_in, typoutfunc: UINT2_out,
+    typbyref: false
+},
+
+{
+    typid: 108, typname: "UINT4", typlen: 4, typalign: 4,
+    typisvarlen: false, typinfunc: UINT4_in, typoutfunc: UINT4_out,
+    typbyref: false
+},
+
+{
+    typid: 109, typname: "UINT8", typlen: 8, typalign: 8,
+    typisvarlen: false, typinfunc: UINT8_in, typoutfunc: UINT8_out,
+    typbyref: false
+},
+
+{
+    typid: 110, typname: "CHAR", typlen: 0, typalign: 1,
+    typisvarlen: false, typinfunc: CHAR_in, typoutfunc: CHAR_out,
+    typlenfunc: CHAR_typlen, typbyref: true
+},
+
+{
+    typid: 111, typname: "VARCHAR", typalign: 1, typlen: -1,
+    // VARCHAR needs to be fixed-length if we make an FixedlenDataPage only
+    // build
+    typisvarlen: (not config_always_use_fixedlen_datapage),
+    typinfunc: VARCHAR_in, typoutfunc: VARCHAR_out,
+    typlenfunc: (config_always_use_fixedlen_datapage and VARCHAR_typlen or
+                                                         INVALID_OID),
+    typbyref: true
+},
+
+// The __STRING type is the internal type for strings that may or may not be
+// NULL terminated. It should never be used outside the system, and internally
+// they should be accessed as absl::string_view using the variable-length datum
+// interfaces.
+{
+    typid: 112, typname: "__STRING", typalign: 1, typlen: -1,
+    typisvarlen: true, typbyref: true
+},
+
+{
+    typid: 113, typname: "FLOAT", typalign: 4, typlen: 4,
+    typisvarlen: false, typbyref: false, typinfunc: FLOAT_in,
+    typoutfunc: FLOAT_out
+},
+
+{
+    typid: 114, typname: "DOUBLE", typalign: 8, typlen: 8,
+    typisvarlen: false, typbyref: false, typinfunc: DOUBLE_in,
+    typoutfunc: DOUBLE_out
+},
+
+// The __INTERNAL type represents a POD object used internally. This should not
+// be used outside the system, and only the routines that create and
+// operate on it know how to interpret it. For now, this is just a dummy type
+// to denote an internal struct.
+{
+    typid: 115, typname: "__INTERNAL", typalign: 8, typlen: -1,
+    typisvarlen: true, typbyref: true
+},
+
+{
+    typid: 116, typname: "DATE", typalign: 4, typlen: 4,
+    typisvarlen: false, typbyref: false, typinfunc: DATE_in,
+    typoutfunc: DATE_out
+},
+
+// XXX INTERVAL not implemented yet
+// Use DATE_adddays(DATE, INT4)/DATE_subdays(DATE, INT4) as a workaround
+//{
+//    typid: 117, typename: "INTERVAL", typalign: 8, typlen: 8,
+//    typisvarlen: false, typbyref: false, typinfunc: INTERVAL_in,
+//    typoutfunc: DATE_out
+//},
+
+// XXX DECIMAL not implemented yet
+//{
+//    typid: 118, typname: "DECIMAL", typalign: 8, typlen: -1,
+//    typisvarlen: true, typbyref: true, typinfunc: DECIMAL_in,
+//    typoutfunc: DECIMAL_out
+//},
+

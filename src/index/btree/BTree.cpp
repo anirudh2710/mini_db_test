@@ -1,5 +1,4 @@
 #include "index/btree/BTreeInternal.h"
-
 #include "catalog/CatCache.h"
 #include "storage/FileManager.h"
 #include "storage/BufferManager.h"
@@ -41,27 +40,26 @@ BTree::Initialize(const IndexDesc *idxdesc) {
     }
 
     //TODO implement
+    char* buffer;
+    FileId file_id;
+    PageNumber pg_no;
+    char *meta_buffer;    
 
+    file_id = idxdesc->GetIndexEntry()->idxfid();
 
-    FileId fid = idxdesc->GetIndexEntry()->idxfid();
-    std::unique_ptr<File> f = g_fileman->Open(fid);
-    PageNumber pgNum = f->AllocatePage();
-    char* buf;
-    BufferId bufId = g_bufman->PinPage(pgNum, &buf);
-    BTreePageHeaderData::Initialize(buf, 
-                                        BTREE_PAGE_ISROOT|BTREE_PAGE_ISLEAF, 
-                                        InvalidOid, 
-                                        InvalidOid);
-    PageNumber pid = f->GetFirstPageNumber();
-    char *metaPageBuf;    
-    ScopedBufferId bid = g_bufman->PinPage(pid, &metaPageBuf);
-    BTreeMetaPageData::Initialize(metaPageBuf,pgNum);
-    g_bufman->UnpinPage(bid);
-    g_bufman->UnpinPage(bufId);
-    /*std::unique_ptr<BTree> btree = Create(std::make_shared<IndexDesc>(idxdesc));
-    BTree* bt = btree.get();
-    maxaligned_char_buf* buf;
-    bt->CreateNewRoot(INVALID_BUFID, &buf);*/
+    std::unique_ptr<File> f = g_fileman->Open(file_id);
+    pg_no = f->AllocatePage();
+    
+    
+    BufferId bufid = g_bufman->PinPage(pg_no, &buffer);
+
+    BTreePageHeaderData::Initialize(buffer, BTREE_PAGE_ISROOT|BTREE_PAGE_ISLEAF, InvalidOid, InvalidOid);
+    PageNumber page = f->GetFirstPageNumber();
+    
+    ScopedBufferId sbuf = g_bufman->PinPage(page, &meta_buffer);
+    BTreeMetaPageData::Initialize(meta_buffer,pg_no);
+    g_bufman->UnpinPage(sbuf);
+    g_bufman->UnpinPage(bufid);
 }
 
 
@@ -114,19 +112,20 @@ BTree::IsEmpty() {
     PageNumber page_no;
     ScopedBufferId meta_bufid;
     ScopedBufferId root_id;
+    BTreeMetaPageData* meta_page;
     char* root_buf;
 
     page_no = m_file->GetFirstPageNumber();   
     meta_bufid = g_bufman->PinPage(page_no, &meta_buf);
 
-    BTreeMetaPageData* meta_page = (BTreeMetaPageData*)meta_buf;
+    meta_page = (BTreeMetaPageData*)meta_buf;
     
     root_id = g_bufman->PinPage(meta_page->m_root_pid, &root_buf);
     VarlenDataPage varlen(root_buf);
 
     g_bufman->UnpinPage(meta_bufid);
     g_bufman->UnpinPage(root_id);
-    
+
     return varlen.GetRecordCount() == 0;
 }
 
@@ -141,7 +140,6 @@ BTree::GetTreeHeight() {
 void
 BTreeCheckComparisonOperatorPrototype(Oid typid, Oid opfuncid) {
     if (!g_db->is_open() || g_catcache == nullptr) {
-        // can't check the operator signatures during database initialization
         return ;
     }
     auto func = g_catcache->FindFunction(opfuncid);

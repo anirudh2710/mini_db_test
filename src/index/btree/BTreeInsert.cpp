@@ -68,7 +68,7 @@ BTree::FindInsertionSlotIdOnLeaf(const IndexKey *key,
             return INVALID_SID;
         }
     }
-    ret_val = slot_id + 1;
+    int ret_val = slot_id + 1;
 
 
     return ret_val;
@@ -84,7 +84,6 @@ BTree::InsertRecordOnPage(BufferId bufid,
     Record recd(recbuf);
     BTreePageHeaderData* lhead;
     char* r_buf;
-    PageNumber rpg_no;
     bufer = g_bufman->GetBuffer(bufid);
     VarlenDataPage page_no(bufer);
     
@@ -96,13 +95,10 @@ BTree::InsertRecordOnPage(BufferId bufid,
         if(search_path.size()==0)
         {
             lhead = (BTreePageHeaderData*)page_no.GetUserData();
-            rpg_no = lhead->m_next_pid;
+            PageNumber rpg_no = lhead->m_next_pid;
             CreateNewRoot(bufid, std::move(int_rec));
-            bufid = g_bufman->PinPage(rightPgNumber, &r_buf);
+            bufid = g_bufman->PinPage(rpg_no, &r_buf);
         }
-        
-        //BufferId new_bufid = g_bufman->UnpinPage(pageHeaderData->m_next_pid);
-        //InsertRecordOnPage()
     }
     g_bufman->UnpinPage(bufid);
 }
@@ -111,35 +107,49 @@ void
 BTree::CreateNewRoot(BufferId bufid,
                      maxaligned_char_buf &&recbuf) {
     //TODO
-    BufferId rootPageBufId = CreateNewBTreePage(true,false,InvalidOid,InvalidOid);
-    char* rootPageBuf = g_bufman->GetBuffer(rootPageBufId);
-    PageNumber rootPgNumber = g_bufman->GetPageNumber(rootPageBufId);
-    VarlenDataPage rootPg(rootPageBuf);
+    char* rpage_buffer;
+    char* lpage_bufer;
+    char* r_buf;
+    char* l_buf;
+    char* meta_pg;
+    BTreeInternalRecordHeaderData* recd_val;
+    BufferId root_bufid;
+    
+    root_bufid = CreateNewBTreePage(true,false,InvalidOid,InvalidOid);
+    rpage_buffer = g_bufman->GetBuffer(root_bufid);
+    VarlenDataPage root_pg(rpage_buffer);
 
-    char* leftPageBuf = g_bufman->GetBuffer(bufid);
-    PageNumber leftPgNumber = g_bufman->GetPageNumber(bufid);
-    VarlenDataPage leftPg(leftPageBuf);
-    BTreePageHeaderData* lhead = (BTreePageHeaderData*)leftPg.GetUserData();
+    PageNumber root_pgno = g_bufman->GetPageNumber(root_bufid);
+    
+
+    lpage_bufer = g_bufman->GetBuffer(bufid);
+    PageNumber left_pgno = g_bufman->GetPageNumber(bufid);
+    VarlenDataPage left_pg(lpage_bufer);
+
+    BTreePageHeaderData* lhead = (BTreePageHeaderData*)left_pg.GetUserData();
     lhead->m_flags = BTREE_PAGE_ISLEAF;
 
-    char* r_buf;
+    
     BufferId r_bufid = g_bufman->PinPage(lhead->m_next_pid, &r_buf);
     VarlenDataPage rightPg(r_buf);
-    Record r(recbuf);
-    char* leftbuf;
-    BTreeInternalRecordHeaderData* firstRecord = (BTreeInternalRecordHeaderData*)leftbuf;
-    firstRecord->m_child_pid = leftPgNumber;
-    Record temp(leftbuf, sizeof(leftbuf));
-    rootPg.InsertRecordAt(rootPg.GetMinSlotId(), temp);
-    rootPg.InsertRecordAt(rootPg.GetMinSlotId()+1, r);
 
-    BufferId bid = GetBTreeMetaPage(); 
-    char* metaPage = g_bufman->GetBuffer(bid);
-    BTreeMetaPageData::Initialize(metaPage,rootPgNumber);
-    g_bufman->UnpinPage(rootPageBufId); //new root page
-    g_bufman->UnpinPage(bid);//meta page
-    g_bufman->UnpinPage(r_bufid);//right leaf page
-    g_bufman->UnpinPage(bufid);//Left leaf or old root                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            
+    Record recd(recbuf);
+    
+    recd_val = (BTreeInternalRecordHeaderData*)l_buf;
+    recd_val->m_child_pid = left_pgno;
+    Record temp(l_buf, sizeof(l_buf));
+    root_pg.InsertRecordAt(root_pg.GetMinSlotId(), temp);
+    root_pg.InsertRecordAt(root_pg.GetMinSlotId()+1, recd);
+
+    BufferId buffid = GetBTreeMetaPage(); 
+    meta_pg = g_bufman->GetBuffer(buffid);
+
+    BTreeMetaPageData::Initialize(meta_pg,root_pgno);
+
+    g_bufman->UnpinPage(root_bufid); 
+    g_bufman->UnpinPage(buffid);
+    g_bufman->UnpinPage(r_bufid);
+    g_bufman->UnpinPage(bufid);                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
 }
 
 maxaligned_char_buf
@@ -147,41 +157,59 @@ BTree::SplitPage(BufferId bufid,
                  SlotId insertion_sid,
                  maxaligned_char_buf &&recbuf) {
     //TODOO
-    char* buf = g_bufman->GetBuffer(bufid);
-    VarlenDataPage pg(buf);
-    PageNumber currPage = g_bufman->GetPageNumber(bufid);
-    BTreePageHeaderData* pageHeaderData = (BTreePageHeaderData*)pg.GetUserData();
-    BufferId new_bufid =
-        CreateNewBTreePage(pageHeaderData->IsRootPage(), pageHeaderData->IsLeafPage(), currPage, pageHeaderData->m_next_pid);
-    PageNumber nextPage = g_bufman->GetPageNumber(new_bufid);
-    pageHeaderData->m_next_pid = nextPage;
-    char* new_buf = g_bufman->GetBuffer(new_bufid);
-    VarlenDataPage new_page(new_buf);
-    SlotId mid = pg.GetMaxSlotId()/2;
-    //Moving one extra record if insertion_sid is less than mid
-    mid = insertion_sid<=mid ? mid : mid+1;
-    for(SlotId start=mid;start<=pg.GetMaxSlotId();start++){
-        Record r = pg.GetRecord(start);
-        new_page.InsertRecord(r);
-        r.GetRecordId().pid = nextPage;
+    char* buffer;
+    char* next_buffer;
+    buffer = g_bufman->GetBuffer(bufid);
+    BTreePageHeaderData* pg_head;
+    maxaligned_char_buf recd_val;
+
+    VarlenDataPage pg_no(buffer);
+    PageNumber cur_page = g_bufman->GetPageNumber(bufid);
+    pg_head = (BTreePageHeaderData*)pg_no.GetUserData();
+
+    BufferId next_bufid =CreateNewBTreePage(pg_head->IsRootPage(), pg_head->IsLeafPage(), cur_page, pg_head->m_next_pid);
+
+    PageNumber next_pg = g_bufman->GetPageNumber(next_bufid);
+    pg_head->m_next_pid = next_pg;
+    
+    next_buffer = g_bufman->GetBuffer(next_bufid);
+    VarlenDataPage new_page(next_buffer);
+
+    SlotId slotid = pg_no.GetMaxSlotId()/2;
+    if (insertion_sid>slotid)
+    {
+        slotid = slotid+1;
     }
-    for(SlotId end=pg.GetMaxSlotId();end>=mid;end--){
-        pg.RemoveSlot(end);
+    SlotId start=slotid;
+    while(start<pg_no.GetMaxSlotId())
+    {
+        Record r = pg_no.GetRecord(start);
+        new_page.InsertRecord(r);
+        r.GetRecordId().pid = next_pg;
+        start++;
+    }
+    SlotId end=pg_no.GetMaxSlotId();
+    while(end>=slotid)
+    {
+        pg_no.RemoveSlot(end);
+        end--;
     }
 
-    Record new_record(recbuf);
-    if(insertion_sid<=mid){
-        pg.InsertRecordAt(insertion_sid, new_record);
-        new_record.GetRecordId().pid = currPage;
+    Record next_recd(recbuf);
+    if(insertion_sid<=slotid)
+    {
+        pg_no.InsertRecordAt(insertion_sid, next_recd);
+        next_recd.GetRecordId().pid = cur_page;
     } 
     else{
-        new_page.InsertRecordAt(insertion_sid, new_record);
-        new_record.GetRecordId().pid = nextPage;
+        new_page.InsertRecordAt(insertion_sid, next_recd);
+        next_recd.GetRecordId().pid = next_pg;
     }
-    maxaligned_char_buf firstRecord;
-    CreateInternalRecord(new_page.GetRecord(new_page.GetMinSlotId()), nextPage, true, firstRecord);
-    g_bufman->UnpinPage(new_bufid);
-    return firstRecord;
+
+    
+    CreateInternalRecord(new_page.GetRecord(new_page.GetMinSlotId()), next_pg, true, recd_val);
+    g_bufman->UnpinPage(next_bufid);
+    return recd_val;
 }
 
 }   // namespace taco

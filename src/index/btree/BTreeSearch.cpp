@@ -15,8 +15,7 @@ BTree::BTreeTupleCompare(const IndexKey *key,
     
     if(!isleaf)
     {
-        BTreeInternalRecordHeaderData* head = (BTreeInternalRecordHeaderData*)recbuf;
-        
+        BTreeInternalRecordHeaderData* head = (BTreeInternalRecordHeaderData*)recbuf;       
         payload = head->GetPayload();
         rec_id = head->m_heap_recid;
         
@@ -52,76 +51,6 @@ BTree::BTreeTupleCompare(const IndexKey *key,
     return temp;
 }
 
-SlotId
-BTree::Search(const IndexKey *key,const RecordId &recid,bool isleaf,VarlenDataPage* varlen, SlotId startid, SlotId endid) 
-{
-    if (startid>endid)
-    {
-        if(isleaf){
-            return INVALID_SID;
-        }
-        else{
-            return 1;
-        }
-    }
-
-    if( startid == endid ){
-        Record rec_mid = varlen->GetRecord(startid);
-        //we will check the condition of temp_mid
-        int temp_mid = BTreeTupleCompare(key, recid, rec_mid.GetData(), isleaf);
-        if(temp_mid==1 || temp_mid==0) 
-        {
-            return startid;
-        }
-        if(startid>1){
-            Record rec_bef = varlen->GetRecord(startid-1);
-
-            int temp_bef = BTreeTupleCompare(key, recid, rec_bef.GetData(), isleaf);
-            //we will check the condition of temp_bef
-            return temp_bef==1 || temp_bef==0 ? startid-1 : isleaf ? INVALID_SID : 1;
-        }
-        if (isleaf) 
-        {
-            return INVALID_SID;
-        } 
-        else{
-            return 1;
-        } 
-    }
-        
-    Record rec_mid = varlen->GetRecord(startid + (endid - startid) / 2);
-
-    int temp = BTreeTupleCompare(key, recid, rec_mid.GetData(), isleaf);
-
-    if(temp==0) 
-    {
-        return startid + (endid - startid) / 2;}
-    if( temp==-1 )
-    {
-        return Search( key, recid, isleaf,varlen, startid, startid + (endid - startid) / 2 );}
-
-    int value= Search( key, recid, isleaf, varlen, (startid + (endid - startid) / 2) +1, endid );
-
-    if (value == -1)
-    {
-        return (startid + (endid - startid) / 2);
-    }
-    else {
-        return value;
-    }
-}
-
-SlotId
-BTree::BinarySearchOnPage(char *buf,
-                          const IndexKey *key,
-                          const RecordId &recid) {
-    VarlenDataPage varlen(buf);
-
-    BTreePageHeaderData *head = (BTreePageHeaderData *) varlen.GetUserData();
-
-    return Search(key, recid, head->IsLeafPage(), &varlen, varlen.GetMinSlotId(), varlen.GetMaxSlotId());
-}
-
 
 BufferId
 BTree::FindLeafPage(const IndexKey *key,
@@ -146,6 +75,55 @@ BTree::FindLeafPage(const IndexKey *key,
     BufferId buf_id = g_bufman->PinPage(page_no, &bufer);
 
     return FindLeafPage(buf_id, key, recid, p_search_path);
+}
+
+SlotId
+BTree::BinarySearch(bool isleaf, const IndexKey *key, const RecordId &recid, VarlenDataPage* varlen, SlotId start_idx, SlotId end_idx){
+    if(start_idx>end_idx) return isleaf ? INVALID_SID : 1;
+    if( start_idx == end_idx ){
+        Record midRecord = varlen->GetRecord(start_idx);
+        int val1 = BTreeTupleCompare(key, recid, midRecord.GetData(), isleaf);
+        //Binary Search makes sure that if you reach here and val1==1 that means (key,recid) id greater than all the elements before it
+        //Hence returning the start_idx from below.
+        if(val1==1 || val1==0) return start_idx;
+        //If you reach here that means val1==-1 i.e. (key, recid) is smaller and if its the first element i.e. start_idx==1,
+        //that means no element smaller than (key,recid) exists.
+        if(start_idx>1){
+            //If val1==-1 and if the element just before it i.e. val2==1,
+            //this confirms that (key,recid) is smaller than record at val1 and greater than record at val2
+            //hence we can return the record at val2 from here
+            Record oneRecordBefore = varlen->GetRecord(start_idx-1);
+            int val2 = BTreeTupleCompare(key, recid, oneRecordBefore.GetData(), isleaf);
+            return val2==1 || val2==0 ? start_idx-1 : isleaf ? INVALID_SID : 1;
+        }
+        return isleaf ? INVALID_SID : 1;
+    }
+        
+
+    int mid_idx = start_idx + (end_idx - start_idx) / 2;
+    Record midRecord = varlen->GetRecord(mid_idx);
+    int val1 = BTreeTupleCompare(key, recid, midRecord.GetData(), isleaf);
+    if(val1==0) return mid_idx;
+    if( val1==-1 )
+        return BinarySearch( isleaf, key, recid, varlen, start_idx, mid_idx );
+
+    int ret = BinarySearch( isleaf, key, recid, varlen, mid_idx+1, end_idx );
+    
+    return ret == -1 ? mid_idx : ret;
+}
+
+SlotId
+BTree::BinarySearchOnPage(char *buf,
+                          const IndexKey *key,
+                          const RecordId &recid) {
+    VarlenDataPage varlen(buf);
+    BTreePageHeaderData *head = (BTreePageHeaderData *) varlen.GetUserData();
+
+    auto Search = [this, =] (bool isleaf, const IndexKey *key, const RecordId &recid, VarlenDataPage* varlen, SlotId start_idx, SlotId end_idx) ->SlotId{
+
+    };
+    return Search(key,recid, head-> IsLeafPage(), &varlen, varlen.GetMinSlotId(), varlen.GetMaxSlotId())
+    
 }
 
 BufferId

@@ -1,0 +1,459 @@
+// @COMMENT@ This template file needs to be processed with sed.
+// @COMMENT@ Any line with @COMMENT will be stripped
+// @COMMENT@ The following variables are replaced:
+// @COMMENT@ @CTYPE@ the c type name
+// @COMMENT@ @Datum_Getter@ the GetXXX() function in Datum
+// @COMMENT@ @SQLTYPE@ the sql type name
+// @COMMENT@ @ABSL::ATO@ the absl::SimpleAtoX function or ours for 1/2-byte integers
+// @COMMENT@ @PRI@ the macro for the printf type specifier
+// @COMMENT@ @OID@: The next oid
+#include "tdb.h"
+
+#include <cinttypes>
+
+#include <absl/strings/numbers.h>
+
+#include "utils/builtin_funcs.h"
+#include "utils/numbers.h"
+#include "utils/typsupp/aggregation.h"
+#include "utils/typsupp/varchar.h"
+
+namespace taco {
+
+namespace {
+
+// The longest 64-bit integer is 20 digits long. Adding a possible sign and
+// the space for '\0' gives us 22.
+constexpr const size_t STRING_OUTPUT_BUFLEN = 22;
+}
+
+BUILTIN_RETTYPE(@SQLTYPE@)
+BUILTIN_FUNC(@SQLTYPE@_in, @OID@)
+BUILTIN_ARGTYPE(__STRING)
+{
+    if (FMGR_ARG(0).isnull()) {
+        return Datum::FromNull();
+    }
+
+    absl::string_view &&str = FMGR_ARG(0).GetVarlenAsStringView();
+    @CTYPE@ val;
+    if (!@ABSL::ATO@(str, &val)) {
+        LOG(kError, "cannot parse \"%s\" as a @SQLTYPE@", str);
+    }
+    return Datum::From(val);
+}
+
+BUILTIN_RETTYPE(__STRING)
+BUILTIN_FUNC(@SQLTYPE@_out, @OID@)
+BUILTIN_ARGTYPE(@SQLTYPE@)
+{
+    if (FMGR_ARG(0).isnull()) {
+        return Datum::FromNull();
+    }
+
+    @CTYPE@ val = FMGR_ARG(0).@Datum_Getter@();
+    auto buffer = unique_malloc(STRING_OUTPUT_BUFLEN);
+    absl::SNPrintF((char*) buffer.get(), STRING_OUTPUT_BUFLEN, "%" @PRI@, val);
+    return Datum::FromVarlenBytes(std::move(buffer),
+                                  strlen((char*) buffer.get()));
+}
+
+BUILTIN_RETTYPE(@SQLTYPE@)
+BUILTIN_FUNC(@SQLTYPE@_add, @OID@)
+BUILTIN_ARGTYPE(@SQLTYPE@, @SQLTYPE@)
+BUILTIN_OPR(ADD)
+{
+    if (FMGR_ARG(0).isnull() || FMGR_ARG(1).isnull()) {
+        return Datum::FromNull();
+    }
+
+    @CTYPE@ arg0 = FMGR_ARG(0).@Datum_Getter@();
+    @CTYPE@ arg1 = FMGR_ARG(1).@Datum_Getter@();
+    @CTYPE@ res = arg0 + arg1;
+    return Datum::From(res);
+}
+
+BUILTIN_RETTYPE(@SQLTYPE@)
+BUILTIN_FUNC(@SQLTYPE@_sub, @OID@)
+BUILTIN_ARGTYPE(@SQLTYPE@, @SQLTYPE@)
+BUILTIN_OPR(SUB)
+{
+    if (FMGR_ARG(0).isnull() || FMGR_ARG(1).isnull()) {
+        return Datum::FromNull();
+    }
+
+    @CTYPE@ arg0 = FMGR_ARG(0).@Datum_Getter@();
+    @CTYPE@ arg1 = FMGR_ARG(1).@Datum_Getter@();
+    @CTYPE@ res = arg0 - arg1;
+    return Datum::From(res);
+}
+
+BUILTIN_RETTYPE(@SQLTYPE@)
+BUILTIN_FUNC(@SQLTYPE@_mul, @OID@)
+BUILTIN_ARGTYPE(@SQLTYPE@, @SQLTYPE@)
+BUILTIN_OPR(MUL)
+{
+    if (FMGR_ARG(0).isnull() || FMGR_ARG(1).isnull()) {
+        return Datum::FromNull();
+    }
+
+    @CTYPE@ arg0 = FMGR_ARG(0).@Datum_Getter@();
+    @CTYPE@ arg1 = FMGR_ARG(1).@Datum_Getter@();
+    @CTYPE@ res = arg0 * arg1;
+    return Datum::From(res);
+}
+
+BUILTIN_RETTYPE(@SQLTYPE@)
+BUILTIN_FUNC(@SQLTYPE@_div, @OID@)
+BUILTIN_ARGTYPE(@SQLTYPE@, @SQLTYPE@)
+BUILTIN_OPR(DIV)
+{
+    if (FMGR_ARG(0).isnull() || FMGR_ARG(1).isnull()) {
+        return Datum::FromNull();
+    }
+
+    @CTYPE@ arg1 = FMGR_ARG(1).@Datum_Getter@();
+    if (arg1 == 0) {
+        LOG(kError, "division by zero");
+    }
+
+    @CTYPE@ arg0 = FMGR_ARG(0).@Datum_Getter@();
+    @CTYPE@ res = arg0 / arg1;
+    return Datum::From(res);
+}
+
+BUILTIN_RETTYPE(@SQLTYPE@)
+BUILTIN_FUNC(@SQLTYPE@_mod, @OID@)
+BUILTIN_ARGTYPE(@SQLTYPE@, @SQLTYPE@)
+BUILTIN_OPR(MOD)
+{
+    if (FMGR_ARG(0).isnull() || FMGR_ARG(1).isnull()) {
+        return Datum::FromNull();
+    }
+
+    @CTYPE@ arg1 = FMGR_ARG(1).@Datum_Getter@();
+    if (arg1 == 0) {
+        LOG(kError, "division by zero");
+    }
+
+    @CTYPE@ arg0 = FMGR_ARG(0).@Datum_Getter@();
+    @CTYPE@ res = arg0 % arg1;
+    return Datum::From(res);
+}
+
+BUILTIN_RETTYPE(@SQLTYPE@)
+BUILTIN_FUNC(@SQLTYPE@_neg, @OID@)
+BUILTIN_ARGTYPE(@SQLTYPE@)
+BUILTIN_OPR(NEG)
+{
+    if (FMGR_ARG(0).isnull()) {
+        return Datum::FromNull();
+    }
+
+    @CTYPE@ arg0 = FMGR_ARG(0).@Datum_Getter@();
+    @CTYPE@ res = -arg0 ;
+    return Datum::From(res);
+}
+
+BUILTIN_RETTYPE(BOOL)
+BUILTIN_FUNC(@SQLTYPE@_eq, @OID@)
+BUILTIN_ARGTYPE(@SQLTYPE@, @SQLTYPE@)
+BUILTIN_OPR(EQ)
+{
+    if (FMGR_ARG(0).isnull() || FMGR_ARG(1).isnull()) {
+        return Datum::FromNull();
+    }
+
+    @CTYPE@ arg0 = FMGR_ARG(0).@Datum_Getter@();
+    @CTYPE@ arg1 = FMGR_ARG(1).@Datum_Getter@();
+    bool res = arg0 == arg1;
+    return Datum::From(res);
+}
+
+BUILTIN_RETTYPE(BOOL)
+BUILTIN_FUNC(@SQLTYPE@_ne, @OID@)
+BUILTIN_ARGTYPE(@SQLTYPE@, @SQLTYPE@)
+BUILTIN_OPR(NE)
+{
+    if (FMGR_ARG(0).isnull() || FMGR_ARG(1).isnull()) {
+        return Datum::FromNull();
+    }
+
+    @CTYPE@ arg0 = FMGR_ARG(0).@Datum_Getter@();
+    @CTYPE@ arg1 = FMGR_ARG(1).@Datum_Getter@();
+    bool res = arg0 != arg1;
+    return Datum::From(res);
+}
+
+BUILTIN_RETTYPE(BOOL)
+BUILTIN_FUNC(@SQLTYPE@_lt, @OID@)
+BUILTIN_ARGTYPE(@SQLTYPE@, @SQLTYPE@)
+BUILTIN_OPR(LT)
+{
+    if (FMGR_ARG(0).isnull() || FMGR_ARG(1).isnull()) {
+        return Datum::FromNull();
+    }
+
+    @CTYPE@ arg0 = FMGR_ARG(0).@Datum_Getter@();
+    @CTYPE@ arg1 = FMGR_ARG(1).@Datum_Getter@();
+    bool res = arg0 < arg1;
+    return Datum::From(res);
+}
+
+BUILTIN_RETTYPE(BOOL)
+BUILTIN_FUNC(@SQLTYPE@_le, @OID@)
+BUILTIN_ARGTYPE(@SQLTYPE@, @SQLTYPE@)
+BUILTIN_OPR(LE)
+{
+    if (FMGR_ARG(0).isnull() || FMGR_ARG(1).isnull()) {
+        return Datum::FromNull();
+    }
+
+    @CTYPE@ arg0 = FMGR_ARG(0).@Datum_Getter@();
+    @CTYPE@ arg1 = FMGR_ARG(1).@Datum_Getter@();
+    bool res = arg0 <= arg1;
+    return Datum::From(res);
+}
+
+BUILTIN_RETTYPE(BOOL)
+BUILTIN_FUNC(@SQLTYPE@_gt, @OID@)
+BUILTIN_ARGTYPE(@SQLTYPE@, @SQLTYPE@)
+BUILTIN_OPR(GT)
+{
+    if (FMGR_ARG(0).isnull() || FMGR_ARG(1).isnull()) {
+        return Datum::FromNull();
+    }
+
+    @CTYPE@ arg0 = FMGR_ARG(0).@Datum_Getter@();
+    @CTYPE@ arg1 = FMGR_ARG(1).@Datum_Getter@();
+    bool res = arg0 > arg1;
+    return Datum::From(res);
+}
+
+BUILTIN_RETTYPE(BOOL)
+BUILTIN_FUNC(@SQLTYPE@_ge, @OID@)
+BUILTIN_ARGTYPE(@SQLTYPE@, @SQLTYPE@)
+BUILTIN_OPR(GE)
+{
+    if (FMGR_ARG(0).isnull() || FMGR_ARG(1).isnull()) {
+        return Datum::FromNull();
+    }
+
+    @CTYPE@ arg0 = FMGR_ARG(0).@Datum_Getter@();
+    @CTYPE@ arg1 = FMGR_ARG(1).@Datum_Getter@();
+    bool res = arg0 >= arg1;
+    return Datum::From(res);
+}
+
+BUILTIN_RETTYPE(@SQLTYPE@)
+BUILTIN_FUNC(@SQLTYPE@_not, @OID@)
+BUILTIN_ARGTYPE(@SQLTYPE@)
+BUILTIN_OPR(BITNOT)
+{
+    if (FMGR_ARG(0).isnull()) {
+        return Datum::FromNull();
+    }
+
+    @CTYPE@ arg0 = FMGR_ARG(0).@Datum_Getter@();
+    @CTYPE@ res = ~arg0 ;
+    return Datum::From(res);
+}
+
+BUILTIN_RETTYPE(@SQLTYPE@)
+BUILTIN_FUNC(@SQLTYPE@_and, @OID@)
+BUILTIN_ARGTYPE(@SQLTYPE@, @SQLTYPE@)
+BUILTIN_OPR(BITAND)
+{
+    if (FMGR_ARG(0).isnull() || FMGR_ARG(1).isnull()) {
+        return Datum::FromNull();
+    }
+
+    @CTYPE@ arg0 = FMGR_ARG(0).@Datum_Getter@();
+    @CTYPE@ arg1 = FMGR_ARG(1).@Datum_Getter@();
+    @CTYPE@ res = (arg0 & arg1);
+    return Datum::From(res);
+}
+
+BUILTIN_RETTYPE(@SQLTYPE@)
+BUILTIN_FUNC(@SQLTYPE@_or, @OID@)
+BUILTIN_ARGTYPE(@SQLTYPE@, @SQLTYPE@)
+BUILTIN_OPR(BITOR)
+{
+    if (FMGR_ARG(0).isnull() || FMGR_ARG(1).isnull()) {
+        return Datum::FromNull();
+    }
+
+    @CTYPE@ arg0 = FMGR_ARG(0).@Datum_Getter@();
+    @CTYPE@ arg1 = FMGR_ARG(1).@Datum_Getter@();
+    @CTYPE@ res = (arg0 | arg1);
+    return Datum::From(res);
+}
+
+BUILTIN_RETTYPE(@SQLTYPE@)
+BUILTIN_FUNC(@SQLTYPE@_xor, @OID@)
+BUILTIN_ARGTYPE(@SQLTYPE@, @SQLTYPE@)
+BUILTIN_OPR(BITXOR)
+{
+    if (FMGR_ARG(0).isnull() || FMGR_ARG(1).isnull()) {
+        return Datum::FromNull();
+    }
+
+    @CTYPE@ arg0 = FMGR_ARG(0).@Datum_Getter@();
+    @CTYPE@ arg1 = FMGR_ARG(1).@Datum_Getter@();
+    @CTYPE@ res = (arg0 ^ arg1);
+    return Datum::From(res);
+}
+
+BUILTIN_RETTYPE(@SQLTYPE@)
+BUILTIN_FUNC(@SQLTYPE@_lsh, @OID@)
+BUILTIN_ARGTYPE(@SQLTYPE@, UINT1)
+BUILTIN_OPR(LSH)
+{
+    if (FMGR_ARG(0).isnull() || FMGR_ARG(1).isnull()) {
+        return Datum::FromNull();
+    }
+
+    @CTYPE@ arg0 = FMGR_ARG(0).@Datum_Getter@();
+    @CTYPE@ arg1 = FMGR_ARG(1).@Datum_Getter@();
+    @CTYPE@ res = (arg0 << arg1);
+    return Datum::From(res);
+}
+
+BUILTIN_RETTYPE(@SQLTYPE@)
+BUILTIN_FUNC(@SQLTYPE@_rsh, @OID@)
+BUILTIN_ARGTYPE(@SQLTYPE@, UINT1)
+BUILTIN_OPR(RSH)
+{
+    if (FMGR_ARG(0).isnull() || FMGR_ARG(1).isnull()) {
+        return Datum::FromNull();
+    }
+
+    @CTYPE@ arg0 = FMGR_ARG(0).@Datum_Getter@();
+    @CTYPE@ arg1 = FMGR_ARG(1).GetUInt8();
+    @CTYPE@ res = (arg0 >> arg1);
+    return Datum::From(res);
+}
+
+BUILTIN_RETTYPE(VOID)
+BUILTIN_FUNC(@SQLTYPE@_SUM_acc, @OID@)
+BUILTIN_ARGTYPE(__INTERNAL, @SQLTYPE@)
+{
+    if (FMGR_ARG(1).isnull()) {
+        return Datum::FromNull();
+    }
+
+    SumState *s = (SumState *) FMGR_ARG(0).GetVarlenBytes();
+    s->m_empty = false;
+
+    typedef typename SumStateAggType<@CTYPE@>::A A;
+    ((A&) s->m_agg) += FMGR_ARG(1).@Datum_Getter@();
+    return Datum::FromNull();
+}
+
+BUILTIN_RETTYPE(VOID)
+BUILTIN_FUNC(@SQLTYPE@_AVG_acc, @OID@)
+BUILTIN_ARGTYPE(__INTERNAL, @SQLTYPE@)
+{
+    if (FMGR_ARG(1).isnull()) {
+        return Datum::FromNull();
+    }
+
+    AvgState *s = (AvgState *) FMGR_ARG(0).GetVarlenBytes();
+    s->m_sum += FMGR_ARG(1).@Datum_Getter@();
+    s->m_cnt += 1;
+    return Datum::FromNull();
+}
+
+BUILTIN_RETTYPE(VOID)
+BUILTIN_FUNC(@SQLTYPE@_MIN_acc, @OID@)
+BUILTIN_ARGTYPE(__INTERNAL, @SQLTYPE@)
+{
+    if (FMGR_ARG(1).isnull()) {
+        return Datum::FromNull();
+    }
+
+    PrimitiveMinMaxState *s =
+        (PrimitiveMinMaxState *) FMGR_ARG(0).GetVarlenBytes();
+    @CTYPE@ val = FMGR_ARG(1).@Datum_Getter@();
+    if (s->m_empty) {
+        s->m_empty = false;
+        ((@CTYPE@&) s->m_value) = val;
+    } else {
+        if (val < ((@CTYPE@&) s->m_value)) {
+            ((@CTYPE@&) s->m_value) = val;
+        }
+    }
+    return Datum::FromNull();
+}
+
+BUILTIN_RETTYPE(VOID)
+BUILTIN_FUNC(@SQLTYPE@_MAX_acc, @OID@)
+BUILTIN_ARGTYPE(__INTERNAL, @SQLTYPE@)
+{
+    if (FMGR_ARG(1).isnull()) {
+        return Datum::FromNull();
+    }
+
+    PrimitiveMinMaxState *s =
+        (PrimitiveMinMaxState *) FMGR_ARG(0).GetVarlenBytes();
+    @CTYPE@ val = FMGR_ARG(1).@Datum_Getter@();
+    if (s->m_empty) {
+        s->m_empty = false;
+        ((@CTYPE@&) s->m_value) = val;
+    } else {
+        if (val > ((@CTYPE@&) s->m_value)) {
+            ((@CTYPE@&) s->m_value) = val;
+        }
+    }
+    return Datum::FromNull();
+}
+
+BUILTIN_RETTYPE(VOID)
+BUILTIN_FUNC(@SQLTYPE@_MINMAX_finalize, @OID@)
+BUILTIN_ARGTYPE(__INTERNAL)
+{
+    PrimitiveMinMaxState *s =
+        (PrimitiveMinMaxState *) FMGR_ARG(0).GetVarlenBytes();
+    if (s->m_empty) {
+        return Datum::FromNull();
+    }
+    return Datum::From((@CTYPE@&)s->m_value);
+}
+
+BUILTIN_RETTYPE(VARCHAR)
+BUILTIN_FUNC(@SQLTYPE@_to_VARCHAR, @OID@)
+BUILTIN_ARGTYPE(@SQLTYPE@)
+BUILTIN_OPR(CAST)
+{
+    if (FMGR_ARG(0).isnull()) {
+        return Datum::FromNull();
+    }
+
+    @CTYPE@ val = FMGR_ARG(0).@Datum_Getter@();
+    auto buffer = unique_malloc(STRING_OUTPUT_BUFLEN);
+    auto len = absl::SNPrintF(
+        (char*) buffer.get(), STRING_OUTPUT_BUFLEN, "%" @PRI@, val);
+    // It's safe to pass a buffer that is larger than the declared length to
+    // Datum, which will free the buffer using `free()` without the length.
+    return Datum::FromVarlenBytes(std::move(buffer), (uint32_t) len);
+}
+
+BUILTIN_RETTYPE(@SQLTYPE@)
+BUILTIN_FUNC(VARCHAR_to_@SQLTYPE@, @OID@)
+BUILTIN_ARGTYPE(VARCHAR)
+BUILTIN_OPR(CAST)
+{
+    if (FMGR_ARG(0).isnull()) {
+        return Datum::FromNull();
+    }
+
+    absl::string_view str = varchar_to_string_view(FMGR_ARG(0));
+    @CTYPE@ val;
+    if (!@ABSL::ATO@(str, &val)) {
+        LOG(kError, "cannot cast string \"%s\" as a @SQLTYPE", str);
+    }
+    return Datum::From(val);
+}
+
+}   // namespace taco
+

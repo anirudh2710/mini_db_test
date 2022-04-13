@@ -228,13 +228,6 @@ private:
      * an internal page.
      */
 
-    SlotId Search(const IndexKey *key,
-                        const RecordId &recid,
-                        bool isleaf,
-                        VarlenDataPage* varlen, 
-                        SlotId startid, 
-                        SlotId endid);
-
 
     SlotId BinarySearchOnPage(char *buf,
                               const IndexKey *key,

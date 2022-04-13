@@ -1,0 +1,211 @@
+// Data file for the Aggregation catalog.
+// The fields aggid, aggtid, aggoprtypid and aggrettypid are automatically
+// filled by gen_init_data.py during code generation in Aggregation.dat, so
+// there's no need to provide them here.  The function IDs can be specified
+// using the built-in function name below.
+
+{
+    aggname: "COUNT", agginitfuncid: COUNT_init,
+    aggaccfuncid: COUNT_acc, aggfinalizefuncid: COUNT_finalize
+},
+
+{
+    aggname: 'SUM', agginitfuncid: primitive_SUM_init,
+    aggaccfuncid: UINT1_SUM_acc, aggfinalizefuncid: uint_SUM_finalize
+},
+
+{
+    aggname: 'SUM', agginitfuncid: primitive_SUM_init,
+    aggaccfuncid: UINT2_SUM_acc, aggfinalizefuncid: uint_SUM_finalize
+},
+
+{
+    aggname: 'SUM', agginitfuncid: primitive_SUM_init,
+    aggaccfuncid: UINT4_SUM_acc, aggfinalizefuncid: uint_SUM_finalize
+},
+
+{
+    aggname: 'SUM', agginitfuncid: primitive_SUM_init,
+    aggaccfuncid: UINT8_SUM_acc, aggfinalizefuncid: uint_SUM_finalize
+},
+
+{
+    aggname: 'SUM', agginitfuncid: primitive_SUM_init,
+    aggaccfuncid: FLOAT_SUM_acc, aggfinalizefuncid: floating_SUM_finalize
+},
+
+{
+    aggname: 'SUM', agginitfuncid: primitive_SUM_init,
+    aggaccfuncid: DOUBLE_SUM_acc, aggfinalizefuncid: floating_SUM_finalize
+},
+
+{
+    aggname: 'SUM', agginitfuncid: primitive_SUM_init,
+    aggaccfuncid: INT1_SUM_acc, aggfinalizefuncid: int_SUM_finalize
+},
+
+{
+    aggname: 'SUM', agginitfuncid: primitive_SUM_init,
+    aggaccfuncid: INT2_SUM_acc, aggfinalizefuncid: int_SUM_finalize
+},
+
+{
+    aggname: 'SUM', agginitfuncid: primitive_SUM_init,
+    aggaccfuncid: INT4_SUM_acc, aggfinalizefuncid: int_SUM_finalize
+},
+
+{
+    aggname: 'SUM', agginitfuncid: primitive_SUM_init,
+    aggaccfuncid: INT8_SUM_acc, aggfinalizefuncid: int_SUM_finalize
+},
+
+{
+    aggname: 'AVG', agginitfuncid: AVG_init,
+    aggaccfuncid: INT1_AVG_acc, aggfinalizefuncid: AVG_finalize
+},
+
+{
+    aggname: 'AVG', agginitfuncid: AVG_init,
+    aggaccfuncid: INT2_AVG_acc, aggfinalizefuncid: AVG_finalize
+},
+
+{
+    aggname: 'AVG', agginitfuncid: AVG_init,
+    aggaccfuncid: INT4_AVG_acc, aggfinalizefuncid: AVG_finalize
+},
+
+{
+    aggname: 'AVG', agginitfuncid: AVG_init,
+    aggaccfuncid: INT8_AVG_acc, aggfinalizefuncid: AVG_finalize
+},
+
+{
+    aggname: 'AVG', agginitfuncid: AVG_init,
+    aggaccfuncid: UINT1_AVG_acc, aggfinalizefuncid: AVG_finalize
+},
+
+{
+    aggname: 'AVG', agginitfuncid: AVG_init,
+    aggaccfuncid: UINT2_AVG_acc, aggfinalizefuncid: AVG_finalize
+},
+
+{
+    aggname: 'AVG', agginitfuncid: AVG_init,
+    aggaccfuncid: UINT4_AVG_acc, aggfinalizefuncid: AVG_finalize
+},
+
+{
+    aggname: 'AVG', agginitfuncid: AVG_init,
+    aggaccfuncid: UINT8_AVG_acc, aggfinalizefuncid: AVG_finalize
+},
+
+{
+    aggname: 'AVG', agginitfuncid: AVG_init,
+    aggaccfuncid: FLOAT_AVG_acc, aggfinalizefuncid: AVG_finalize
+},
+
+{
+    aggname: 'AVG', agginitfuncid: AVG_init,
+    aggaccfuncid: DOUBLE_AVG_acc, aggfinalizefuncid: AVG_finalize
+},
+
+{
+    aggname: 'MIN', agginitfuncid: MINMAX_init,
+    aggaccfuncid: INT1_MIN_acc, aggfinalizefuncid: INT1_MINMAX_finalize
+},
+
+{
+    aggname: 'MIN', agginitfuncid: MINMAX_init,
+    aggaccfuncid: INT2_MIN_acc, aggfinalizefuncid: INT2_MINMAX_finalize
+},
+
+{
+    aggname: 'MIN', agginitfuncid: MINMAX_init,
+    aggaccfuncid: INT4_MIN_acc, aggfinalizefuncid: INT4_MINMAX_finalize
+},
+
+{
+    aggname: 'MIN', agginitfuncid: MINMAX_init,
+    aggaccfuncid: INT8_MIN_acc, aggfinalizefuncid: INT8_MINMAX_finalize
+},
+
+{
+    aggname: 'MIN', agginitfuncid: MINMAX_init,
+    aggaccfuncid: UINT1_MIN_acc, aggfinalizefuncid: UINT1_MINMAX_finalize
+},
+
+{
+    aggname: 'MIN', agginitfuncid: MINMAX_init,
+    aggaccfuncid: UINT2_MIN_acc, aggfinalizefuncid: UINT2_MINMAX_finalize
+},
+
+{
+    aggname: 'MIN', agginitfuncid: MINMAX_init,
+    aggaccfuncid: UINT4_MIN_acc, aggfinalizefuncid: UINT4_MINMAX_finalize
+},
+
+{
+    aggname: 'MIN', agginitfuncid: MINMAX_init,
+    aggaccfuncid: UINT8_MIN_acc, aggfinalizefuncid: UINT8_MINMAX_finalize
+},
+
+{
+    aggname: 'MIN', agginitfuncid: MINMAX_init,
+    aggaccfuncid: FLOAT_MIN_acc, aggfinalizefuncid: FLOAT_MINMAX_finalize
+},
+
+{
+    aggname: 'MIN', agginitfuncid: MINMAX_init,
+    aggaccfuncid: DOUBLE_MIN_acc, aggfinalizefuncid: DOUBLE_MINMAX_finalize
+},
+
+{
+    aggname: 'MAX', agginitfuncid: MINMAX_init,
+    aggaccfuncid: INT1_MAX_acc, aggfinalizefuncid: INT1_MINMAX_finalize
+},
+
+{
+    aggname: 'MAX', agginitfuncid: MINMAX_init,
+    aggaccfuncid: INT2_MAX_acc, aggfinalizefuncid: INT2_MINMAX_finalize
+},
+
+{
+    aggname: 'MAX', agginitfuncid: MINMAX_init,
+    aggaccfuncid: INT4_MAX_acc, aggfinalizefuncid: INT4_MINMAX_finalize
+},
+
+{
+    aggname: 'MAX', agginitfuncid: MINMAX_init,
+    aggaccfuncid: INT8_MAX_acc, aggfinalizefuncid: INT8_MINMAX_finalize
+},
+
+{
+    aggname: 'MAX', agginitfuncid: MINMAX_init,
+    aggaccfuncid: UINT1_MAX_acc, aggfinalizefuncid: UINT1_MINMAX_finalize
+},
+
+{
+    aggname: 'MAX', agginitfuncid: MINMAX_init,
+    aggaccfuncid: UINT2_MAX_acc, aggfinalizefuncid: UINT2_MINMAX_finalize
+},
+
+{
+    aggname: 'MAX', agginitfuncid: MINMAX_init,
+    aggaccfuncid: UINT4_MAX_acc, aggfinalizefuncid: UINT4_MINMAX_finalize
+},
+
+{
+    aggname: 'MAX', agginitfuncid: MINMAX_init,
+    aggaccfuncid: UINT8_MAX_acc, aggfinalizefuncid: UINT8_MINMAX_finalize
+},
+
+{
+    aggname: 'MAX', agginitfuncid: MINMAX_init,
+    aggaccfuncid: FLOAT_MAX_acc, aggfinalizefuncid: FLOAT_MINMAX_finalize
+},
+
+{
+    aggname: 'MAX', agginitfuncid: MINMAX_init,
+    aggaccfuncid: DOUBLE_MAX_acc, aggfinalizefuncid: DOUBLE_MINMAX_finalize
+},
+
