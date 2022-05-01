@@ -11,13 +11,14 @@
 #include "catalog/BootstrapCatCache.h"
 #include "catalog/InitDataFileReader.h"
 #include "catalog/systables/initoids.h"
+#include "catalog/aggtyp.h"
 #include "index/idxtyps.h"
 #include "index/Index.h"
 #include "index/IndexKey.h"
 #include "index/TableBulkLoadIterator.h"
 #include "index/tuple_compare.h"
 #include "storage/FileManager.h"
-#include "query/expr/optypes.h"
+#include "expr/optypes.h"
 #include "utils/typsupp/varchar.h"
 #include "utils/builtin_funcs.h"
 
@@ -799,6 +800,110 @@ CatCacheBase<CatCacheCls>::FindOperator(OpType optype,
     }
     return ((SysTable_Operator*)(entry->m_systable_struct.get()))->opfuncid();
 }
+
+template<class CatCacheCls>
+Oid
+CatCacheBase<CatCacheCls>::FindCast(Oid castoprtypid,
+                                    Oid castrettypid,
+                                    bool must_be_implicit) {
+    auto entry = SearchForCatalogEntry<true, 2, false>::Call(
+        this, initoids::TAB_Cast,
+        initoids::IDX_Cast_castoprtypid_castrettypid,
+        {SysTable_Cast::castoprtypid_colid(),
+         SysTable_Cast::castrettypid_colid()},
+        {initoids::FUNC_OID_eq,
+         initoids::FUNC_OID_eq},
+        castoprtypid, castrettypid);
+    if (!entry) {
+        return InvalidOid;
+    }
+    auto cast = (const SysTable_Cast*) entry->m_systable_struct.get();
+    if (must_be_implicit && !cast->castisimplicit()) {
+        // must be implicit cast as required by the caller
+        return InvalidOid;
+    }
+    return cast->castfuncid();
+}
+
+template<class CatCacheCls>
+Oid
+CatCacheBase<CatCacheCls>::FindAggregationByNameAndOprType(
+    absl::string_view aggname,
+    Oid aggoprtypid) {
+    auto entry = SearchForCatalogEntry<true, 2, false>::Call(
+        this, initoids::TAB_Aggregation,
+        initoids::IDX_Aggregation_aggoprtypid_aggname,
+        {SysTable_Aggregation::aggoprtypid_colid(),
+         SysTable_Aggregation::aggname_colid()},
+        {initoids::FUNC_OID_eq,
+         initoids::FUNC_VARCHAR___STRING_eq_ci},
+        aggoprtypid, aggname);
+    if (!entry) {
+        // There's no aggregation with the specified type.
+        // Try to find one with any type.
+        entry = SearchForCatalogEntry<true, 2, false>::Call(
+            this, initoids::TAB_Aggregation,
+            initoids::IDX_Aggregation_aggoprtypid_aggname,
+            {SysTable_Aggregation::aggoprtypid_colid(),
+             SysTable_Aggregation::aggname_colid()},
+            {initoids::FUNC_OID_eq,
+             initoids::FUNC_VARCHAR___STRING_eq_ci},
+            InvalidOid, aggname);
+    }
+
+    if (!entry) {
+        return InvalidOid;
+    }
+    return
+        ((const SysTable_Aggregation*) entry->m_systable_struct.get())->aggid();
+}
+
+template<class CatCacheCls>
+Oid
+CatCacheBase<CatCacheCls>::FindAggregationByTidAndOprType(
+    AggType aggtid,
+    Oid aggoprtypid) {
+    if (aggtid == AGGTYPE(OTHER)) {
+        return InvalidOid;
+    }
+
+    auto entry = SearchForCatalogEntry<false, 2, false>::Call(
+        this, initoids::TAB_Aggregation,
+        initoids::IDX_Aggregation_aggoprtypid_aggtid,
+        0,
+        {SysTable_Aggregation::aggoprtypid_colid(),
+         SysTable_Aggregation::aggtid_colid()},
+        {initoids::FUNC_OID_eq,
+         initoids::FUNC_UINT1_eq},
+        aggoprtypid, aggtid);
+    if (entry.size() > 1) {
+        LOG(kWarning, "more than one hard-coded aggregations found for "
+                      "aggregation type %d and operand type " OID_FORMAT,
+                      (int) aggtid, aggoprtypid);
+        return InvalidOid;
+    }
+    if (entry.empty()) {
+        // There's no aggregation with the specified type.
+        // Try to find one with any type.
+        entry = SearchForCatalogEntry<false, 2, false>::Call(
+            this, initoids::TAB_Aggregation,
+            initoids::IDX_Aggregation_aggoprtypid_aggtid,
+            0,
+            {SysTable_Aggregation::aggoprtypid_colid(),
+             SysTable_Aggregation::aggtid_colid()},
+            {initoids::FUNC_OID_eq,
+             initoids::FUNC_UINT1_eq},
+            InvalidOid, aggtid);
+    }
+
+    if (entry.size() != 1) {
+        return InvalidOid;
+    }
+    return
+        ((const SysTable_Aggregation*)
+            entry.front()->m_systable_struct.get())->aggid();
+}
+
 
 template<class CatCacheCls>
 Oid

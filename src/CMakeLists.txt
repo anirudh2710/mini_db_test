@@ -15,8 +15,12 @@ endfunction()
 
 add_subdirectory(base)
 add_subdirectory(dbmain)
+add_subdirectory(expr)
 
-add_subdirectory(query)
+add_subdirectory(extsort)
+
+add_subdirectory(plan)
+add_subdirectory(execution)
 
 add_subdirectory(storage)
 

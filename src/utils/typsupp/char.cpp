@@ -27,6 +27,9 @@ BUILTIN_ARGTYPE(__STRING)
     uint64_t max_size = FMGR_TYPPARAM();
     size_t size = str.length();
 
+    if (max_size == 0) {
+        max_size = size;
+    }
     while (size > max_size && str[size - 1] == ' ') {
         --size;
     }
@@ -69,13 +72,18 @@ BUILTIN_ARGTYPE(UINT8)
     if (max_size > (uint64_t) std::numeric_limits<FieldOffset>::max()) {
         LOG(kError, "CHAR does not support maximum length of %lu", max_size);
     }
+    if (max_size == 0) {
+        // 0 denotes unknown type param, in which case we treat it as a
+        // variable length record
+        return Datum::From((int16_t) -1);
+    }
     return Datum::From((int16_t) max_size);
 }
 
 BUILTIN_RETTYPE(VARCHAR)
 BUILTIN_FUNC(CHAR_to_VARCHAR, 893)
 BUILTIN_ARGTYPE(CHAR)
-BUILTIN_OPR(IMPLICIT_CAST, CAST)
+BUILTIN_OPR(IMPLICIT_CAST)
 {
     if (FMGR_ARG(0).isnull()) {
         return Datum::FromNull();

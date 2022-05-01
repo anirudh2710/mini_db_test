@@ -101,20 +101,59 @@ private:
            const std::vector<bool> &nullable,
            std::vector<std::string> field_names);
 
+    Schema(const std::vector<FieldInfo>& fields,
+           const std::vector<std::string>& field_names);
+
     /*!
      * The default constructor for constructing a fake schema.
      */
     Schema() = default;
 
 public:
+    /*!
+     * Creates a new schema with the given types and field names. The returned
+     * schema object is not fully initialized. To do so, the caller either
+     * needs to call `Schema::ComputeLayout()` (for a schema that will be used
+     * for reading/writing record payloads) or `Schema::CollectTypeInfo()` (for
+     * a schema that will be used for caching the type info only).
+     */
     static Schema *Create(const std::vector<Oid> &typid,
                           const std::vector<uint64_t> &typparam,
                           const std::vector<bool> &nullable);
 
+    /*!
+     * Creates a new schema with the given types without field names. If one
+     * calls `GetFieldName()` on the returned schema object, it will return an
+     * empty string. The returned schema object is not fully initialized. To do
+     * so, the caller either needs to call `Schema::ComputeLayout()` (for a
+     * schema that will be used for reading/writing record payloads) or
+     * `Schema::CollectTypeInfo()` (for a schema that will be used for caching
+     * the type info only).
+     */
     static Schema *Create(const std::vector<Oid> &typid,
                           const std::vector<uint64_t> &typparam,
                           const std::vector<bool> &nullable,
                           std::vector<std::string> field_names);
+
+    /*!
+     * Combines two schema into one.
+     */
+    static Schema *Combine(const Schema* left, const Schema* right);
+
+    /*!
+     * Returns whether the two schemas are identical (i.e., having the same
+     * numbers of fields, the same types for the fields with the same field id,
+     * and the nullness of the fields).
+     */
+    static bool Identical(const Schema* left, const Schema* right);
+
+    /*!
+     * Returns if the schema on the right is union compatible with the left
+     * (i.e., having the same number of fields, the same types for each field with same
+     * field id, and making sure right is not nullable if left does not allow
+     * nulls.)
+     */
+    static bool Compatible(const Schema* left, const Schema* right);
 
 private:
     /*!
@@ -123,22 +162,35 @@ private:
      * ``const SysTable_Type *FindType(Oid)''.
      */
     template<class CCache>
-    void ComputeLayoutImpl(CCache *catcache);
+    void ComputeLayoutImpl(CCache *catcache, bool cache_typinfo_only);
 
 public:
     /*!
      * Computes the layout of the record payload with this schema, using the
-     * global catalog cache g_db->catcache().
+     * global catalog cache g_db->catcache(). This also collects the type info.
      */
     void ComputeLayout();
 
     /*!
      * Computes the layout of the record payload with this schema, using the
-     * provided Bootstrap catelog cache.
+     * provided Bootstrap catelog cache. This also collects the type info.
      *
      * This should only be used at DB startup and testing.
      */
     void ComputeLayout(BootstrapCatCache *catcache);
+
+    /*!
+     * Collects the type info only without computing the record payload layout.
+     * This may be used when the Schema is in-memory only, i.e., the caller
+     * does not need to call the field extraction and serialization functions,
+     * (e.g., DissemblePayload, GetField, WritePayloadToBuffer).
+     */
+    void CollectTypeInfo();
+
+    constexpr bool
+    IsTypeInfoCollected() const {
+        return m_type_info_collected;
+    }
 
     constexpr bool
     IsLayoutComputed() const {
@@ -150,7 +202,15 @@ private:
     void EnsureLayoutComputed() const {
         if (!IsLayoutComputed()) {
             LOG(kFatal, "Schema::ComputeLayout() must be called first "
-                        "before quering the on-disk layout of a Schema");
+                        "before querying the on-disk layout of a Schema");
+        }
+    }
+
+    void EnsureTypeInfoCollected() const {
+        if (!IsTypeInfoCollected()) {
+            LOG(kFatal, "Schema::CollectTypeInfo() or Schema::ComputeLayout() "
+                        "must be called first before querying the in-memory "
+                        "type info of a schema");
         }
     }
 
@@ -178,20 +238,39 @@ public:
      */
     inline absl::string_view
     GetFieldName(FieldId field_id) const {
-        if ((size_t) field_id > m_field_names.size()) {
+        if ((size_t) field_id >= m_field_names.size()) {
             return "";
         }
         return m_field_names[field_id];
     }
 
+    /*!
+     * Returns whether this field is nullable.
+     */
     inline bool
     FieldIsNullable(FieldId field_id) const {
         return m_field[field_id].m_nullbit_id >= 0;
     }
 
+    /*!
+     * Returns whether this field is passed by reference or by value in memory.
+     *
+     * Note that both variable-length fields and some fixed-length fields (that
+     * are not 1,2,4,8 bytes long) are passed by reference.
+     */
     inline bool
     FieldPassByRef(FieldId field_id) const {
         return m_field[field_id].m_typbyref;
+    }
+
+    /*!
+     * Returns the cached size of a field. If this field is variable-length
+     * or is fixed-length with unknown type parameter, returns -1.
+     */
+    FieldOffset
+    GetFieldLength(size_t field_id) const {
+        EnsureTypeInfoCollected();
+        return m_field[field_id].m_typlen;
     }
 
     /*!
@@ -283,6 +362,8 @@ private:
                                          maxaligned_char_buf &buf) const;
 
     /*! whether the layout has been computed */
+    bool m_type_info_collected;
+
     bool m_layout_computed;
 
     bool m_has_only_nonnullable_fixedlen_fields;

@@ -33,6 +33,7 @@ Schema::Schema(const std::vector<Oid> &typid,
                const std::vector<uint64_t> &typparam,
                const std::vector<bool> &nullable,
                std::vector<std::string> field_names):
+    m_type_info_collected(false),
     m_layout_computed(false),
     m_field(typid.empty() ? 1 : typid.size()),
     m_field_names(std::move(field_names)) {
@@ -51,6 +52,13 @@ Schema::Schema(const std::vector<Oid> &typid,
     }
 }
 
+Schema::Schema(const std::vector<FieldInfo>& fields,
+               const std::vector<std::string>& field_names):
+    m_type_info_collected(false),
+    m_layout_computed(false),
+    m_field(std::move(fields)),
+    m_field_names(std::move(field_names)) {}
+
 Schema*
 Schema::Create(const std::vector<Oid> &typid,
                const std::vector<uint64_t> &typparam,
@@ -62,6 +70,59 @@ Schema::Create(const std::vector<Oid> &typid,
         return nullptr;
     }
     return new Schema(typid, typparam, nullable, {});
+}
+
+Schema*
+Schema::Combine(const Schema* left, const Schema* right) {
+    std::vector<FieldInfo> fields;
+    fields.reserve(left->m_field.size() + right->m_field.size());
+    fields.insert(fields.end(), left->m_field.begin(), left->m_field.end());
+    fields.insert(fields.end(), right->m_field.begin(), right->m_field.end());
+
+    std::vector<std::string> field_names;
+    field_names.reserve(left->m_field_names.size() + right->m_field_names.size());
+    field_names.insert(field_names.end(),
+                       left->m_field_names.begin(),
+                       left->m_field_names.end());
+    field_names.insert(field_names.end(),
+                       right->m_field_names.begin(),
+                       right->m_field_names.end());
+
+    return new Schema(fields, field_names);
+}
+
+bool
+Schema::Identical(const Schema* left, const Schema* right) {
+    if (left->m_field.size() != right->m_field.size()) {
+        return false;
+    }
+    for (size_t i = 0; i < left->m_field.size(); ++i) {
+        if (left->m_field[i].m_typid != right->m_field[i].m_typid)
+            return false;
+        else if (left->m_field[i].m_typparam != right->m_field[i].m_typparam)
+            return false;
+        else if ((left->m_field[i].m_nullbit_id >= 0
+                  && right->m_field[i].m_nullbit_id < 0) ||
+                 (left->m_field[i].m_nullbit_id < 0
+                  && right->m_field[i].m_nullbit_id >= 0))
+            return false;
+    }
+    return true;
+}
+
+bool
+Schema::Compatible(const Schema* left, const Schema* right) {
+    if (left->m_field.size() != right->m_field.size()) {
+        return false;
+    }
+    for (size_t i = 0; i < left->m_field.size(); ++i) {
+        if (left->m_field[i].m_typid != right->m_field[i].m_typid)
+            return false;
+        else if (left->m_field[i].m_nullbit_id < 0
+                 && right->m_field[i].m_nullbit_id >= 0)
+            return false;
+    }
+    return true;
 }
 
 Schema*
@@ -82,7 +143,7 @@ Schema::Create(const std::vector<Oid> &typid,
 
 template<class CCache>
 void
-Schema::ComputeLayoutImpl(CCache *catcache) {
+Schema::ComputeLayoutImpl(CCache *catcache, bool cache_typinfo_only) {
     FieldOffset off = 0;
     FieldId num_fields = GetNumFields();
     FieldId num_nonnullable_fixedlen_fields = 0;
@@ -91,7 +152,9 @@ Schema::ComputeLayoutImpl(CCache *catcache) {
     FieldId num_nullable_fields = 0;
     FieldId num_nullable_varlen_fields = 0;
 
-    m_field_reorder_idx.resize(num_fields);
+    if (!cache_typinfo_only) {
+        m_field_reorder_idx.resize(num_fields);
+    }
 
     // 1. Computes the offsets and reorder index of non-nullable fixed-len
     // fields. Also caches the typlen, type alignment and m_offset values for
@@ -105,7 +168,20 @@ Schema::ComputeLayoutImpl(CCache *catcache) {
         auto typ = catcache->FindType(typid);
         m_field[i].m_typlen = typ->typlen();
         m_field[i].m_typalign = typ->typalign();
-        if (typ->typisvarlen()) {
+
+        if (!typ->typisvarlen() && typ->typlenfunc() != InvalidOid) {
+            // Need to calculate the type length for those fixed-length types
+            // with type parameters. If the type parameter is invalid, this may
+            // return -1 which is treated the same as variable-length below.
+            FunctionInfo f = FindBuiltinFunction(typ->typlenfunc());
+
+            Datum arg1 = Datum::From(m_field[i].m_typparam);
+            Datum res = FunctionCall(f, arg1);
+            ASSERT(!res.isnull());
+            m_field[i].m_typlen = res.GetInt16();
+        }
+
+        if (typ->typisvarlen() || m_field[i].m_typlen == -1) {
 
             // Variable-length field:
             // The typlen of a varlen field must be -1 in the catalog, but let's
@@ -119,50 +195,54 @@ Schema::ComputeLayoutImpl(CCache *catcache) {
             ASSERT(typ->typbyref());
             m_field[i].m_typbyref = true;
 
-            // assign the index into the varlen end
-            // array. The offset value is -m_offset + 1, so make sure we
-            // increment the num_varlen_fields before assigning the index.
-            ++num_varlen_fields;
-            m_field[i].m_offset = -num_varlen_fields;
+            if (!cache_typinfo_only) {
+                // assign the index into the varlen end
+                // array. The offset value is -m_offset + 1, so make sure we
+                // increment the num_varlen_fields before assigning the index.
+                ++num_varlen_fields;
+                m_field[i].m_offset = -num_varlen_fields;
 
-            if (m_field[i].m_nullbit_id >= 0) {
-                ++num_nullable_varlen_fields;
+                if (m_field[i].m_nullbit_id >= 0) {
+                    ++num_nullable_varlen_fields;
+                }
             }
         } else {
             m_field[i].m_typbyref = typ->typbyref();
 
             // Need to calculate the type length for those with type parameters
             if (typ->typlenfunc() != InvalidOid) {
-                FunctionInfo f = FindBuiltinFunction(typ->typlenfunc());
-
-                Datum arg1 = Datum::From(m_field[i].m_typparam);
-                Datum res = FunctionCall(f, arg1);
-                ASSERT(!res.isnull());
-                m_field[i].m_typlen = res.GetInt16();
+                ASSERT(m_field[i].m_typlen >= 0);
             } else {
                 // pass-by-value types must a length of 1, 2, 4 or 8 currently
                 ASSERT(m_field[i].m_typlen <= 8 &&
                         ((m_field[i].m_typlen - 1) & m_field[i].m_typlen) == 0);
             }
 
-            if (m_field[i].m_nullbit_id >= 0) {
-                // nullable fixed-length field
-                ++num_nullable_fixedlen_fields;
-                m_field[i].m_offset = -num_nullable_fixedlen_fields;
-            } else {
-                // non-nullable fixed-length field
-                // This is the only case where we can directly compute a fixed
-                // offset.
-                uint8_t align = typ->typalign();
-                // check for overflow after alignment
-                RETURN_IF((off = TYPEALIGN(align, off)) < 0);
-                m_field[i].m_offset = off;
-                RETURN_IF(!AddWithCheck(off, m_field[i].m_typlen));
+            if (!cache_typinfo_only) {
+                if (m_field[i].m_nullbit_id >= 0) {
+                    // nullable fixed-length field
+                    ++num_nullable_fixedlen_fields;
+                    m_field[i].m_offset = -num_nullable_fixedlen_fields;
+                } else {
+                    // non-nullable fixed-length field
+                    // This is the only case where we can directly compute a fixed
+                    // offset.
+                    uint8_t align = typ->typalign();
+                    // check for overflow after alignment
+                    RETURN_IF((off = TYPEALIGN(align, off)) < 0);
+                    m_field[i].m_offset = off;
+                    RETURN_IF(!AddWithCheck(off, m_field[i].m_typlen));
 
-                m_field_reorder_idx[num_nonnullable_fixedlen_fields] = i;
-                ++num_nonnullable_fixedlen_fields;
+                    m_field_reorder_idx[num_nonnullable_fixedlen_fields] = i;
+                    ++num_nonnullable_fixedlen_fields;
+                }
             }
         }
+    }
+
+    m_type_info_collected = true;
+    if (cache_typinfo_only) {
+        return ;
     }
 
     m_num_nonnullable_fixedlen_fields = num_nonnullable_fixedlen_fields;
@@ -189,8 +269,8 @@ Schema::ComputeLayoutImpl(CCache *catcache) {
     //
     // The null bits follow the same order as the fields are laid in the
     // schema layout, rather than the FieldId number. For example,
-    // suppose Field 2 and 3 are nullable fixed-length fields, while Field 0
-    // is a nullable variable-length field. Then the order in the bitmap
+    // suppose Field 2 and 3 are nullable variable-length fields, while Field 0
+    // is a nullable fixed-length field. Then the order in the bitmap
     // is 2, 3, 0.
     for (FieldId i = 0; i < num_fields; ++i) {
         if (m_field[i].m_typlen == -1) {
@@ -237,12 +317,17 @@ Schema::ComputeLayoutImpl(CCache *catcache) {
 
 void
 Schema::ComputeLayout() {
-    ComputeLayoutImpl(g_db->catcache());
+    ComputeLayoutImpl(g_db->catcache(), false);
 }
 
 void
 Schema::ComputeLayout(BootstrapCatCache *catcache) {
-    ComputeLayoutImpl(catcache);
+    ComputeLayoutImpl(catcache, false);
+}
+
+void
+Schema::CollectTypeInfo() {
+    ComputeLayoutImpl(g_db->catcache(), true);
 }
 
 std::pair<FieldOffset, FieldOffset>
@@ -490,6 +575,7 @@ Schema::GetField(FieldId field_id, const char *payload) const {
         return Datum::FromVarlenBytes(payload + p.first,
                                       m_field[field_id].m_typlen);
     }
+
 
     // pass-by-value fixed-len field
     return Datum::FromFixedlenBytes(payload + p.first, p.second);

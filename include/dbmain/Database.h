@@ -21,6 +21,7 @@ class FileManager;
 class CatCache;
 class BufferManager;
 class Table;
+class Schema;
 
 /*!
  * Set this to true if you don't want Database to create and initialize the
@@ -118,6 +119,8 @@ public:
         return m_catcache;
     }
 
+    Schema* actres_schema() const;
+
     /*!
      * Creates a table named ``tabname'', with ``coltypid.size()'' columns.
      * All the remaining vectors  may be empty or of the same size as
@@ -163,12 +166,13 @@ private:
     FileManager     *m_file_manager;
     BufferManager   *m_buf_manager;
     CatCache        *m_catcache;
+    Schema          *m_actres_schema;
 };
 
 /*! The global instance of Database. */
 extern Database * const g_db;
 
-/*! Shorthand for `g_bd->buf_manager()` */
+/*! Shorthand for `g_db->buf_manager()` */
 #define g_bufman g_db->buf_manager()
 
 /*! Shorthand for `g_db->file_manager()` */
@@ -176,6 +180,9 @@ extern Database * const g_db;
 
 /*! Shorthand for `g_db->catcache()` */
 #define g_catcache g_db->catcache()
+
+/*! Shorthand for `g_db->actres_sch()` */
+#define g_actsch g_db->actres_schema()
 
 }  // namespace taco
 

@@ -254,6 +254,75 @@ public:
     Oid FindOperator(OpType optype, Oid oparg0typid, Oid oparg1typid);
 
     /*!
+     * Returns the cast function id of the one with the specific operand
+     * type and return type.
+     *
+     * The third argument \p must_be_implicit indicates whether the returned
+     * cast function must be implicit cast or not. If it is set to \p true and
+     * the found cast function is not an implicit cast, this function returns
+     * InvalidOid instead. If it is set to \p false, the returned cast function
+     * may be implicit or explicit.
+     *
+     * It returns InvalidOid if there is no cast function from the operand
+     * type to the return type.
+     */
+    Oid FindCast(Oid castoprtypid, Oid castrettypid, bool must_be_implicit);
+
+    /*!
+     * Returns the aggregation systable struct for the aggregation with ID \p
+     * aggid. Returns nullptr if not found.
+     */
+    inline std::shared_ptr<const SysTable_Aggregation>
+    FindAggregation(Oid aggid) {
+        auto entry =
+            SearchForCatalogEntryByOid(initoids::TAB_Aggregation,
+                                       initoids::IDX_Aggregation_aggid,
+                                       SysTable_Aggregation::aggid_colid(),
+                                       aggid);
+        if (!entry) {
+            return nullptr;
+        }
+        return static_pointer_cast<const SysTable_Aggregation>(
+            entry->m_systable_struct);
+    }
+
+    /*!
+     * Returns the aggregation ID for the aggregation with the given name
+     * and aggregation operand type. If there is no aggregation exactly match
+     * the name and operand type specified, this function will also search for an
+     * aggregation with the specified name but works on any operand types (one
+     * notable example is COUNT which only has a single implementation that
+     * works on all types).
+     *
+     * Returns InvalidOid if no aggregation is found with the given name
+     * and may be applied to the specified operand type.
+     */
+    Oid FindAggregationByNameAndOprType(absl::string_view aggname,
+                                        Oid aggoprtypid);
+
+    /*!
+     * Returns the aggregation ID for the aggregation with the given type and
+     * operand type. If there is no aggregation exactly match
+     * the aggregation type and operand type specified, this function will also
+     * search for an aggregation with the specified name but works on any types
+     * (one notable example is COUNT which only has a single implementation
+     * that works on all types).
+     *
+     * Note that `aggtyp` must not be AGGTYPE_OTHER, in which case the caller
+     * should use `FindAggregationByNameAndOprType` instead.  On the other
+     * hand, any aggregation that may be returned here can also be uniquely
+     * found by `FindAggregationByNameAndOprType`. The only difference is that
+     * this is fast path where we can avoid case-insensitive string comparison
+     * here for those hard-coded aggregations.
+     *
+     * Returns InvalidOid if no aggregation may be uniquely identified with
+     * the given aggregation type and operand type, or aggtyp == AGGTYPE_OTHER
+     * even if there is only one such aggregation.
+     */
+    Oid FindAggregationByTidAndOprType(AggType aggtyp,
+                                       Oid aggoprtypid);
+
+    /*!
      * Searches for the systable entry with ID \p recid in the given systable
      * \p systabid.
      *

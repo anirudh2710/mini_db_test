@@ -191,13 +191,15 @@ public:
         return reinterpret_cast<T* const>(val());
     }
 
-private:
+protected:
     constexpr const DatumRep&
     val() const {
         return static_cast<const DatumImpl&>(*this).m_val;
     }
 };
 
+template<class DatumImpl>
+class DatumRefVarlenGetters;
 
 }   // namespace datum_impl
 
@@ -614,9 +616,6 @@ public:
     /*!
      * Returns a deep copy of this datum so that `HasExternalRef() == false`
      * and the owned value is a copy of the old one.
-     *
-     * It may just return itself if this datum does not store a variable-length
-     * value.
      */
     Datum
     DeepCopy() const {
@@ -629,7 +628,21 @@ public:
             memcpy(bytes_copy.get(), bytes, size);
             return Datum::FromVarlenBytes(std::move(bytes_copy), size);
         }
-        return *this;
+        return Copy();
+    }
+
+    /*!
+     * Makes a shallow copy of this datum. If this datum is variable-length
+     * and owns its memory, this function returns a new one that does not
+     * own the underlying memory.
+     */
+    Datum
+    Copy() const {
+        if (m_isvarlen && m_isowned) {
+            // make sure it is not owned in the shallow copy.
+            return Datum::FromVarlenBytes(GetVarlenBytes(), GetVarlenSize());
+        }
+        return Datum(*this);
     }
 
 private:
@@ -704,9 +717,13 @@ private:
      */
     datum_impl::DatumRep    m_val;
 
-    friend class datum_impl::NonVarlenGetters<Datum>;
+    template<class DatumImpl>
+    friend class datum_impl::NonVarlenGetters;
+    template<class DatumImpl>
+    friend class datum_impl::DatumRefVarlenGetters;
     friend class DatumRef;
     friend class NullableDatumRef;
+    friend class DataArray;
 };
 
 namespace datum_impl {
@@ -759,6 +776,31 @@ public:
     constexpr Datum&
     GetDatum() const {
         return *NonVarlenGetters<DatumImpl>::template GetPointerAs<Datum>();
+    }
+
+    /*!
+     * Returns a new Datum that is a deep copy of the underlying datum. The
+     * argument \p isbyref whether the underlying datum has a value that is
+     * passed by reference or by value. Currently variable-length values (which
+     * includes all variable-length types and certain fixed-length types that
+     * are not 1,2,4,8 bytes long) are always passed by reference, while
+     * fixed-length values (which are 1,2,3,8 bytes long) are always passed by
+     * value.
+     *
+     * It is the caller's responsibility to correctly determine whether the
+     * underlying datum is passed by reference or by value. Usually, that is
+     * determined by the SysTable_Type::typbyref() of the type of value.
+     */
+    Datum
+    DeepCopy(bool isbyref) const {
+        if (((DatumImpl&)(*this)).isnull()) {
+            return Datum();
+        }
+        if (isbyref) {
+            return GetDatum().DeepCopy();
+        } else {
+            return Datum(NonVarlenGetters<DatumImpl>::val());
+        }
     }
 };
 
@@ -827,7 +869,7 @@ public:
         m_val(d.m_val) {}
 
     NullableDatumRef(const NullableDatumRef&) = default;
-    NullableDatumRef& operator=(const NullableDatumRef&);
+    NullableDatumRef& operator=(const NullableDatumRef&) = default;
 
     operator DatumRef() const {
         if (m_isnull)
@@ -845,6 +887,110 @@ private:
     datum_impl::DatumRep    m_val;
 
     friend class datum_impl::NonVarlenGetters<NullableDatumRef>;
+};
+
+/*!
+ * DataArray is a plain byte array that can be stored as a Datum itself and
+ * stores the data of a few datum where we do not want to bother with creating
+ * a schema. It is currently used for save points and rewinding in
+ * PlanExecNode. In addition the datum stored in the array may not exceed `2^31
+ * - 1` bytes in size.
+ *
+ * Note that DataArray do not differentiate between zero-length value and a
+ * null value. A zero-length value becomes a null Datum when `GetDatum()` is
+ * called.
+ */
+struct DataArray {
+    constexpr static uint32_t VARLEN_MASK = 1u << 31;
+
+    /*!
+     * Makes a deep copy of the data and stores them in a data array. Returns
+     * the DataArray as a Datum that owns it.
+     *
+     * It is undefined if n == 0.
+     */
+    static Datum
+    From(const Datum *data, uint32_t n) {
+        uint32_t total_sz = MAXALIGN(n * sizeof(uint32_t));
+        for (size_t i = 0; i < n; ++i) {
+            total_sz += data[i].m_isvarlen ? MAXALIGN(data[i].m_size) :
+                        (data[i].m_isnull ? 0 :
+                          (uint32_t) sizeof(datum_impl::DatumRep));
+        }
+        unique_malloced_ptr bytes = unique_aligned_alloc(8, total_sz);
+        auto off = reinterpret_cast<uint32_t*>(bytes.get());
+        off[0] = n;
+        uint32_t cur_off = MAXALIGN(n * sizeof(uint32_t));
+        auto payload = reinterpret_cast<char*>(bytes.get());
+        for (size_t i = 0; i < n; ++i) {
+            if (data[i].m_isvarlen) {
+                memcpy(payload + cur_off, (const char*) data[i].m_val,
+                       data[i].m_size);
+                cur_off += MAXALIGN(data[i].m_size);
+            } else if (!data[i].m_isnull) {
+                *reinterpret_cast<datum_impl::DatumRep*>(payload + cur_off)
+                    = data[i].m_val;
+                cur_off += sizeof(datum_impl::DatumRep);
+            }
+            if (i + 1 != n) {
+                off[i + 1] = cur_off;
+                if (data[i].m_isvarlen) {
+                    off[i] |= VARLEN_MASK;
+                }
+            }
+        }
+        ASSERT(cur_off == total_sz);
+        return Datum::FromVarlenBytes(std::move(bytes), total_sz);
+    }
+
+    /*!
+     * Returns the array length of the DataArray stored in `d`.
+     */
+    template<class SomeDatum>
+    static size_t
+    GetArrayLength(SomeDatum &&d) {
+        return *reinterpret_cast<const uint32_t*>(d.GetVarlenBytes())
+                & ~VARLEN_MASK;
+    }
+
+    /*!
+     * Returns the ith Datum of the DataArray stored in `d`. The returned datum
+     * never owns the memory.
+     */
+    template<class SomeDatum>
+    static Datum
+    GetDatum(SomeDatum &&d, size_t i) {
+        uint32_t n = GetArrayLength(d);
+        uint32_t off;
+        uint32_t end_off;
+        if (i == 0) {
+            off = MAXALIGN(n * sizeof(uint32_t));
+        } else {
+            off = reinterpret_cast<const uint32_t*>(d.GetVarlenBytes())[i]
+                & ~VARLEN_MASK;
+        }
+
+        if (i + 1 == n) {
+            end_off = d.GetVarlenSize();
+        } else {
+            end_off = reinterpret_cast<const uint32_t*>(
+                d.GetVarlenBytes())[i + 1] & ~VARLEN_MASK;
+        }
+        if (end_off == off) {
+            return Datum::FromNull();
+        }
+
+        if (VARLEN_MASK &
+            reinterpret_cast<const uint32_t*>(d.GetVarlenBytes())[i]) {
+            // varlen-value
+            return Datum::FromVarlenBytes(d.GetVarlenBytes() + off,
+                                          end_off - off);
+        } else {
+            // fixed-len value
+            return Datum::FromFixedlenBytes(d.GetVarlenBytes() + off,
+                                            sizeof(datum_impl::DatumRep));
+        }
+    }
 };
 
 }   // namespace taco

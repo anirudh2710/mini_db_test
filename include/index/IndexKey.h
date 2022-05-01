@@ -92,7 +92,7 @@ public:
     /*!
      * Makes a copy of the index key in a newly allocated buffer.
      *
-     * The space is exactly enought for storing `GetNumKeys()` keys.
+     * The space is exactly enough for storing `GetNumKeys()` keys.
      */
     UniqueIndexKey
     Copy() const {
@@ -100,6 +100,19 @@ public:
         void *new_key = aligned_alloc(8, sz);
         ConstructImpl(new_key, &GetKey(0), GetNumKeys(), sz);
         return UniqueIndexKey((IndexKey*) new_key);
+    }
+
+    /*!
+     * Makes a copy of the index key to an existing index key. The existing
+     * index key must be large enough to hold at least as many fields as
+     * this index key object. This function does not allocate new space.
+     *
+     * It is undefined if the buffer pointed by \p key2 is not large enough
+     * and it is undefined if `key2 == this`.
+     */
+    void
+    CopyTo(IndexKey *key2) const {
+        memcpy((void*) key2, (void*) this, GetStructSize());
     }
 
     /*!
@@ -119,6 +132,13 @@ public:
         for (FieldId i = 0; i < nkeys; ++i) {
             if (!IsNull(i) && sch->FieldPassByRef(i)) {
                 Datum &old_datum = GetKey(i).GetDatum();
+                if (data_buffer.size() == data_buffer.capacity() &&
+                    !data_buffer.empty()) {
+                    LOG(kFatal, "causing the data buffer to increase capacity "
+                            "and this will make previously deep copied "
+                            "IndexKey contain dangling pointers (need to "
+                            "reserve space on the vector first!).");
+                }
                 data_buffer.emplace_back(old_datum.DeepCopy());
                 GetKey(i) = data_buffer.back();
             }
@@ -135,11 +155,37 @@ public:
 
     /*!
      * Returns the key \p keyid. It is undefined if `keyid >= GetNumKeys()`.
+     *
+     * Note that it is possible to set the returned reference provided that
+     * it does not change the nullness of the field. Use `IndexKey::SetKey()`
+     * instead if the nullness of the field can change.
      */
     inline DatumRef&
     GetKey(FieldId keyid) const {
         return ((DatumRef*)(((uint8_t*) m_data)
             + MAXALIGN(2 + ((GetNumKeys() + 7) >> 3))))[keyid];
+    }
+
+    /*!
+     * Sets the `keyid`-th field in this index key. Note that this function
+     * cannot be used to increase the number of fields in the index key was
+     * allocated with enough space. Use `IndexKey::Construct` instead for
+     * changing the number of fields.
+     *
+     * It is undefined if \p keyid is out of bound.
+     */
+    template<class SomeDatum>
+    void
+    SetKey(FieldId keyid, const SomeDatum &key) {
+        if (key.isnull()) {
+            SetNullBit(keyid, true);
+            // The datum is left as is here because it is undefined to
+            // call GetKey() if a field is declared as null.
+        } else {
+            SetNullBit(keyid, false);
+            // relying on implicit conversions if SomeDatum is not DatumRef
+            GetKey(keyid) = key;
+        }
     }
 
     /*!

@@ -15,5 +15,8 @@ add_tdb_object_library(utils_typsupp
     char.cpp
     float.cpp
     double.cpp
+    aggregation.cpp
+    numeric_casts.cpp
+    date.cpp
 )
 

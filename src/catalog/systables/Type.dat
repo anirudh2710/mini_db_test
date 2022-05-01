@@ -98,3 +98,33 @@
     typoutfunc: DOUBLE_out
 },
 
+// The __INTERNAL type represents a POD object used internally. This should not
+// be used outside the system, and only the routines that create and
+// operate on it know how to interpret it. For now, this is just a dummy type
+// to denote an internal struct.
+{
+    typid: 115, typname: "__INTERNAL", typalign: 8, typlen: -1,
+    typisvarlen: true, typbyref: true
+},
+
+{
+    typid: 116, typname: "DATE", typalign: 4, typlen: 4,
+    typisvarlen: false, typbyref: false, typinfunc: DATE_in,
+    typoutfunc: DATE_out
+},
+
+// XXX INTERVAL not implemented yet
+// Use DATE_adddays(DATE, INT4)/DATE_subdays(DATE, INT4) as a workaround
+//{
+//    typid: 117, typename: "INTERVAL", typalign: 8, typlen: 8,
+//    typisvarlen: false, typbyref: false, typinfunc: INTERVAL_in,
+//    typoutfunc: DATE_out
+//},
+
+// XXX DECIMAL not implemented yet
+//{
+//    typid: 118, typname: "DECIMAL", typalign: 8, typlen: -1,
+//    typisvarlen: true, typbyref: true, typinfunc: DECIMAL_in,
+//    typoutfunc: DECIMAL_out
+//},
+

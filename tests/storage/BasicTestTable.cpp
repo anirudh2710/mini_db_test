@@ -68,6 +68,11 @@ protected:
                                     uint64_t callsite_lineno) {
     }
 
+    static constexpr bool
+    TableInitialized() {
+        return false;
+    }
+
     std::shared_ptr<const TableDesc> m_tabdesc_a;
     FunctionInfo m_varchar_infunc;
 };

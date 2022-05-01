@@ -29,7 +29,7 @@ public:
      * table descriptor is still alive.
      */
     constexpr const SysTable_Table *
-    GetTableEntry() {
+    GetTableEntry() const {
         return m_table.get();
     }
 

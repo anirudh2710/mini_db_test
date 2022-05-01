@@ -871,7 +871,9 @@ TEST_P(BasicTestVarlenDataPage, TestInsertionWithCompactionNewSlot) {
     ASSERT_EQ(rec.GetRecordId().sid, sid_to_update2);
     ASSERT_NO_ERROR(rbuf_ = dp2.GetRecordBuffer(sid_to_update2, &reclen_));
     EXPECT_EQ(MAXALIGN(reclen_), 8);
-    ASSERT_EQ(rbuf_, rbuf2); // update should be in place
+    // XXX disabling the following line because some students might be doing
+    // eager compaction. As a result, rbuf2 may actually change.
+    //ASSERT_EQ(rbuf_, rbuf2); // update should be in place
 
     FieldOffset new_reclen = reclen1 + reclen2 - 24;
     ASSERT_GT(new_reclen, reclen1 - 8);

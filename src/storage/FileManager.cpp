@@ -304,16 +304,33 @@ FileManager::WritePage(PageNumber pid, const char *buf) {
 
 std::unique_ptr<File>
 FileManager::CreateTmpFile() {
-    // TODO
-    LOG(kFatal, "tmp file is not implemented yet");
-    return nullptr;
+    // creates a random file in the tmpdir
+    std::string fname = mktempfile(absl::StrCat(m_tmpdir, "tmp."));
+
+    // open the file, this file should have been created by mkstemp
+    auto fsfile = absl::WrapUnique(FSFile::Open(
+        fname, /*o_trunc=*/true, /*o_direct=*/true, /*o_creat=*/false));
+
+    // make sure we have at least one page
+    fsfile->Allocate(PAGE_SIZE);
+
+    // unlink immediately so that the file will be removed after the file
+    // is closed
+    fsfile->Delete();
+
+    auto f = absl::WrapUnique(new File());
+    // XXX this is a fake file id since we don't support opening an existing
+    // temporary file yet. Later on, we'll need to allocate a fresh file id
+    // and save the file descriptor for dup() calls in OpenTmpFile()...
+    f->m_fileid = TMP_FILEID_MASK + 1;
+    f->m_fsfile = std::move(fsfile);
+    return f;
 }
 
 std::unique_ptr<File>
 FileManager::OpenTmpFile(FileId fid) {
     ASSERT((fid & TMP_FILEID_MASK) && !(fid & WAL_FILEID_MASK));
-    // TODO
-    LOG(kFatal, "tmp file is not implemented yet");
+    LOG(kFatal, "can't open an existing temporary file");
     return nullptr;
 }
 
@@ -718,11 +735,18 @@ File::Close() {
         return;
     }
 
-    LOG(kFatal, "not implemented");
+    if (is_tmp) {
+        m_fsfile->Close();
+        m_fsfile = nullptr;
+        m_fileid = INVALID_FID;
+        return ;
+    }
+
+    LOG(kFatal, "WAL files not implemented");
 }
 
 void
-File::ReadPage(PageNumber pid, char *buf) {
+File::ReadPage(PageNumber pid, char *buf) const {
     bool is_wal = m_fileid& (WAL_FILEID_MASK);
     bool is_tmp = m_fileid& (TMP_FILEID_MASK);
     bool is_main = !is_wal && !is_tmp;
@@ -738,6 +762,12 @@ File::ReadPage(PageNumber pid, char *buf) {
                         pid, m_fileid, ph->GetFileId());
         }
         return;
+    }
+
+    if (is_tmp) {
+        // the read is supposed to do the range check for us
+        m_fsfile->Read(buf, PAGE_SIZE, pid * PAGE_SIZE);
+        return ;
     }
 
     // TODO for tmp and wal
@@ -763,8 +793,13 @@ File::WritePage(PageNumber pid, const char *buf) {
         return;
     }
 
-    // TODO for tmp and wal
-    LOG(kFatal, "not implemented");
+    if (is_tmp) {
+        // the write is supposed to do the range check for us
+        m_fsfile->Write(buf, PAGE_SIZE, pid * PAGE_SIZE);
+        return ;
+    }
+
+    LOG(kFatal, "WAL not implemented");
 }
 
 
@@ -778,8 +813,13 @@ File::Flush() {
         LOG(kFatal, "flushing individual regular file is not supported");
     }
 
+    if (is_tmp) {
+        m_fsfile->Flush();
+        return ;
+    }
+
     // TODO for tmp and wal
-    LOG(kFatal, "not implemented");
+    LOG(kFatal, "WAL not implemented");
 }
 
 uint64_t
@@ -868,8 +908,12 @@ File::AllocatePageImpl(bool need_latch, LatchMode mode) {
         LOG(kError, "TMP or WAL file page cannot be latched");
     }
 
-    // TODO for tmp and wal
-    LOG(kFatal, "not implemented");
+    if (is_tmp) {
+        m_fsfile->Allocate(PAGE_SIZE);
+        return GetLastPageNumber();
+    }
+
+    LOG(kFatal, "WAL not implemented");
     return INVALID_PID;
 }
 
@@ -942,19 +986,37 @@ File::FreePage(BufferId bufid) {
 }
 
 PageNumber
-File::GetFirstPageNumber() {
-    char *buf;
-    ScopedBufferId meta_bufid = g_bufman->PinPage(m_meta_pid, &buf);
-    RegularFileMetaPageData *meta = (RegularFileMetaPageData *) buf;
-    return meta->m_first_pid;
+File::GetFirstPageNumber() const {
+    if (IsMainFile()) {
+        char *buf;
+        ScopedBufferId meta_bufid = g_bufman->PinPage(m_meta_pid, &buf);
+        RegularFileMetaPageData *meta = (RegularFileMetaPageData *) buf;
+        return meta->m_first_pid;
+    }
+
+    if (IsTmpFile()) {
+        return 0;
+    }
+
+    LOG(kFatal, "WAL file not supported yet");
+    return 0;
 }
 
 PageNumber
-File::GetLastPageNumber() {
-    char *buf;
-    ScopedBufferId meta_bufid = g_bufman->PinPage(m_meta_pid, &buf);
-    RegularFileMetaPageData *meta = (RegularFileMetaPageData *) buf;
-    return meta->m_last_pid.load(memory_order_acquire);
+File::GetLastPageNumber() const {
+    if (IsMainFile()) {
+        char *buf;
+        ScopedBufferId meta_bufid = g_bufman->PinPage(m_meta_pid, &buf);
+        RegularFileMetaPageData *meta = (RegularFileMetaPageData *) buf;
+        return meta->m_last_pid.load(memory_order_acquire);
+    }
+
+    if (IsTmpFile()) {
+        return m_fsfile->Size() / PAGE_SIZE - 1;
+    }
+
+    LOG(kFatal, "WAL file not supported yet");
+    return 0;
 }
 
 }   // namespace taco

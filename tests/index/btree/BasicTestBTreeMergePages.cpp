@@ -112,6 +112,7 @@ TEST_F(BasicTestBTreeMergePages, TestMergeLeafPageWithUniformReclenSmallKey) {
     // successful merge test. We can use this to overwrite the non fm header
     // portion of the page.
     alignas(CACHELINE_SIZE) char rpg_copy[PAGE_SIZE];
+    std::memset(rpg_copy, 0, PAGE_SIZE);
     BTreePageHeaderData::Initialize(rpg_copy,
                                     BTREE_PAGE_ISLEAF,
                                     /*prev_pid =*/lpid,
@@ -519,6 +520,7 @@ TEST_F(BasicTestBTreeMergePages, TestMergeLeafPageWithUniformReclenLargeKey) {
     // successful merge test. We can use this to overwrite the non fm header
     // portion of the page.
     alignas(CACHELINE_SIZE) char rpg_copy[PAGE_SIZE];
+    std::memset(rpg_copy, 0, PAGE_SIZE);
     BTreePageHeaderData::Initialize(rpg_copy,
                                     BTREE_PAGE_ISLEAF,
                                     /*prev_pid =*/lpid,
@@ -945,6 +947,7 @@ TEST_F(BasicTestBTreeMergePages, TestMergeInternalPageWithUniformReclenSmallKey)
     // successful merge test. We can use this to overwrite the non fm header
     // portion of the page.
     alignas(CACHELINE_SIZE) char rpg_copy[PAGE_SIZE];
+    std::memset(rpg_copy, 0, PAGE_SIZE);
     BTreePageHeaderData::Initialize(rpg_copy,
                                     0,
                                     /*prev_pid =*/lpid,
@@ -1292,7 +1295,7 @@ TEST_F(BasicTestBTreeMergePages, TestMergeInternalPageWithUniformReclenSmallKey)
                 ASSERT_EQ(newrechdr->m_child_pid, oldrechdr->m_child_pid)
                     << sid;
 
-                if (sid == lpg.GetMinSlotId()) {
+                if (sid != lpg.GetMinSlotId()) {
                     ASSERT_EQ(oldrechdr->m_heap_recid, newrechdr->m_heap_recid)
                         << sid;
 
@@ -1414,6 +1417,7 @@ TEST_F(BasicTestBTreeMergePages, TestMergeInternalPageWithUniformReclenLargeKey)
     // successful merge test. We can use this to overwrite the non fm header
     // portion of the page.
     alignas(CACHELINE_SIZE) char rpg_copy[PAGE_SIZE];
+    std::memset(rpg_copy, 0, PAGE_SIZE);
     BTreePageHeaderData::Initialize(rpg_copy,
                                     0,
                                     /*prev_pid =*/lpid,
@@ -1770,7 +1774,7 @@ TEST_F(BasicTestBTreeMergePages, TestMergeInternalPageWithUniformReclenLargeKey)
                 ASSERT_EQ(newrechdr->m_child_pid, oldrechdr->m_child_pid)
                     << sid;
 
-                if (sid == lpg.GetMinSlotId()) {
+                if (sid != lpg.GetMinSlotId()) {
                     ASSERT_EQ(oldrechdr->m_heap_recid, newrechdr->m_heap_recid)
                         << sid;
 
@@ -1897,6 +1901,7 @@ TEST_F(BasicTestBTreeMergePages, TestMergeLeafPageWithExactFill) {
     // successful merge test. We can use this to overwrite the non fm header
     // portion of the page.
     alignas(CACHELINE_SIZE) char rpg_copy[PAGE_SIZE];
+    std::memset(rpg_copy, 0, PAGE_SIZE);
     BTreePageHeaderData::Initialize(rpg_copy,
                                     BTREE_PAGE_ISLEAF,
                                     /*prev_pid =*/lpid,
@@ -2346,6 +2351,7 @@ TEST_F(BasicTestBTreeMergePages, TestMergeInternalPageWithExactFill) {
     // successful merge test. We can use this to overwrite the non fm header
     // portion of the page.
     alignas(CACHELINE_SIZE) char rpg_copy[PAGE_SIZE];
+    std::memset(rpg_copy, 0, PAGE_SIZE);
     BTreePageHeaderData::Initialize(rpg_copy,
                                     0,
                                     /*prev_pid =*/lpid,
@@ -2761,7 +2767,7 @@ TEST_F(BasicTestBTreeMergePages, TestMergeInternalPageWithExactFill) {
                 ASSERT_EQ(newrechdr->m_child_pid, oldrechdr->m_child_pid)
                     << sid;
 
-                if (sid == lpg.GetMinSlotId()) {
+                if (sid != lpg.GetMinSlotId()) {
                     ASSERT_EQ(oldrechdr->m_heap_recid, newrechdr->m_heap_recid)
                         << sid;
 

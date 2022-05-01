@@ -336,13 +336,42 @@ public:
         return m_fileid != INVALID_FID;
     }
 
-    void ReadPage(PageNumber pid, char *buf);
+    /*!
+     * Reads a page at the specified page number.
+     *
+     * If this is a main file, this function will simply forward the call to
+     * FileManager::ReadPage().
+     *
+     * If this is a temporary file, this function will directly read the page
+     * from the underlying FSFile.
+     *
+     * WAL files are not supported at the moment.
+     */
+    void ReadPage(PageNumber pid, char *buf) const;
 
+    /*!
+     * Writes a page at the specified page number.
+     *
+     * If this is a main file, this function will simply forward the call to
+     * FileManager::WritePage().
+     *
+     * If this is a temporary file, this function will directly write the page
+     * into the underlying FSFile.
+     *
+     * WAL files are not supported at the moment.
+     */
     void WritePage(PageNumber pid, const char *buf);
 
     /*!
-     * Allocates a new page in the file and returns it page number. The new
+     * Allocates a new page in the file and returns it page number.
+     *
+     * If this is a main file, the new
      * page is not pinned in the buffer maanger.
+     *
+     * If this is temporary file, this function simply extends the file by
+     * 1 page.
+     *
+     * WAL files are not supported at the moment.
      */
     PageNumber
     AllocatePage() {
@@ -373,6 +402,8 @@ public:
 
     /*!
      * Same as FreePage(BufferId) but prevents double free.
+     *
+     * It is an error if it is called on a TMP or WAL file.
      */
     void FreePage(ScopedBufferId &bufid) {
         FreePage(bufid.Release());
@@ -381,18 +412,38 @@ public:
     /*!
      * Returns the first page's PID. The first page's PID never changes so
      * it is not possible that there is any page before the returned page.
+     *
+     * If this is a main file, this is the first page in the linked list.
+     *
+     * If this is a temporary file, this is always 0 (note that temporary file
+     * has a different page number space than the main files).
+     *
+     * WAL files are not supported at the moment.
      */
-    PageNumber GetFirstPageNumber();
+    PageNumber GetFirstPageNumber() const;
 
     /*!
      * Returns the last page's PID. Note that concurrent threads may still
      * append new pages into this file, so the returned PID might not be the
      * last by the time the page is read.
+     *
+     * If this is a main file, this is the last page in the linked list.
+     *
+     * If this is a temporary file, this is the last page number (file size /
+     * PAGE_SIZE - 1) (note that temporary file has a different page number
+     * space than the main files).
+     *
+     * WAL files are not supported at the moment.
      */
-    PageNumber GetLastPageNumber();
+    PageNumber GetLastPageNumber() const;
 
     /*!
-     * Not supported.
+     * Flushes bytes already written to the file. Note that this may not be
+     * called on a main file, where Flush() must go through file manager.
+     *
+     * This may be called on a temporary file.
+     *
+     * WAL files are not supported at the moment.
      */
     void Flush();
 
@@ -401,18 +452,40 @@ public:
         return m_fileid;
     }
 
+    constexpr bool
+    IsMainFile() const {
+        return !(m_fileid & (WAL_FILEID_MASK | TMP_FILEID_MASK));
+    }
+
+    constexpr bool
+    IsTmpFile() const {
+        return m_fileid & TMP_FILEID_MASK;
+    }
+
+    constexpr bool
+    IsWalFile() const {
+        return m_fileid & WAL_FILEID_MASK;
+    }
+
 private:
     File():
         m_fileid(INVALID_FID),
-        m_meta_pid(INVALID_PID) {}
+        m_meta_pid(INVALID_PID),
+        m_fsfile(nullptr) {}
 
     /*!
      * The actual implementation of AllocatePage().
      */
     uint64_t AllocatePageImpl(bool need_latch, LatchMode mode);
 
-    FileId          m_fileid;
-    PageNumber      m_meta_pid;
+    // state for all files
+    FileId                      m_fileid;
+
+    // state for main file
+    PageNumber                  m_meta_pid;
+
+    // alternative state for tmp file
+    std::unique_ptr<FSFile>     m_fsfile;
 
     friend class FileManager;
 };

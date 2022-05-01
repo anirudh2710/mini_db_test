@@ -284,8 +284,16 @@ constexpr Oid MaxOid = std::numeric_limits<Oid>::max() - 1;
 //! The index type, see index/idxtyps.h.
 typedef uint8_t IdxType;
 
-//! The operator type, see query/expr/optypes.h.
+//! The operator type, see expr/optypes.h.
 typedef uint8_t OpType;
+
+/*!
+ * The aggregation type, see catalog/aggtyp.h. All except the OTHER type may be
+ * uniquely identified by the aggregation type and its operand type.  In all
+ * cases, aggregations are also uniquely identified by operand type and its
+ * name.
+ */
+typedef uint8_t AggType;
 
 /*!
  * These alignment macros are derived from PostgreSQL. See COPYRIGHT for a

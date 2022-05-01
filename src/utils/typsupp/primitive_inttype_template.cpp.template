@@ -1,6 +1,3 @@
-#ifndef UTILS_TYPSUPP_@SQLTYPE@_H
-#define UTILS_TYPSUPP_@SQLTYPE@_H
-
 // @COMMENT@ This template file needs to be processed with sed.
 // @COMMENT@ Any line with @COMMENT will be stripped
 // @COMMENT@ The following variables are replaced:
@@ -10,7 +7,6 @@
 // @COMMENT@ @ABSL::ATO@ the absl::SimpleAtoX function or ours for 1/2-byte integers
 // @COMMENT@ @PRI@ the macro for the printf type specifier
 // @COMMENT@ @OID@: The next oid
-
 #include "tdb.h"
 
 #include <cinttypes>
@@ -19,6 +15,8 @@
 
 #include "utils/builtin_funcs.h"
 #include "utils/numbers.h"
+#include "utils/typsupp/aggregation.h"
+#include "utils/typsupp/varchar.h"
 
 namespace taco {
 
@@ -336,6 +334,126 @@ BUILTIN_OPR(RSH)
     return Datum::From(res);
 }
 
+BUILTIN_RETTYPE(VOID)
+BUILTIN_FUNC(@SQLTYPE@_SUM_acc, @OID@)
+BUILTIN_ARGTYPE(__INTERNAL, @SQLTYPE@)
+{
+    if (FMGR_ARG(1).isnull()) {
+        return Datum::FromNull();
+    }
+
+    SumState *s = (SumState *) FMGR_ARG(0).GetVarlenBytes();
+    s->m_empty = false;
+
+    typedef typename SumStateAggType<@CTYPE@>::A A;
+    ((A&) s->m_agg) += FMGR_ARG(1).@Datum_Getter@();
+    return Datum::FromNull();
+}
+
+BUILTIN_RETTYPE(VOID)
+BUILTIN_FUNC(@SQLTYPE@_AVG_acc, @OID@)
+BUILTIN_ARGTYPE(__INTERNAL, @SQLTYPE@)
+{
+    if (FMGR_ARG(1).isnull()) {
+        return Datum::FromNull();
+    }
+
+    AvgState *s = (AvgState *) FMGR_ARG(0).GetVarlenBytes();
+    s->m_sum += FMGR_ARG(1).@Datum_Getter@();
+    s->m_cnt += 1;
+    return Datum::FromNull();
+}
+
+BUILTIN_RETTYPE(VOID)
+BUILTIN_FUNC(@SQLTYPE@_MIN_acc, @OID@)
+BUILTIN_ARGTYPE(__INTERNAL, @SQLTYPE@)
+{
+    if (FMGR_ARG(1).isnull()) {
+        return Datum::FromNull();
+    }
+
+    PrimitiveMinMaxState *s =
+        (PrimitiveMinMaxState *) FMGR_ARG(0).GetVarlenBytes();
+    @CTYPE@ val = FMGR_ARG(1).@Datum_Getter@();
+    if (s->m_empty) {
+        s->m_empty = false;
+        ((@CTYPE@&) s->m_value) = val;
+    } else {
+        if (val < ((@CTYPE@&) s->m_value)) {
+            ((@CTYPE@&) s->m_value) = val;
+        }
+    }
+    return Datum::FromNull();
+}
+
+BUILTIN_RETTYPE(VOID)
+BUILTIN_FUNC(@SQLTYPE@_MAX_acc, @OID@)
+BUILTIN_ARGTYPE(__INTERNAL, @SQLTYPE@)
+{
+    if (FMGR_ARG(1).isnull()) {
+        return Datum::FromNull();
+    }
+
+    PrimitiveMinMaxState *s =
+        (PrimitiveMinMaxState *) FMGR_ARG(0).GetVarlenBytes();
+    @CTYPE@ val = FMGR_ARG(1).@Datum_Getter@();
+    if (s->m_empty) {
+        s->m_empty = false;
+        ((@CTYPE@&) s->m_value) = val;
+    } else {
+        if (val > ((@CTYPE@&) s->m_value)) {
+            ((@CTYPE@&) s->m_value) = val;
+        }
+    }
+    return Datum::FromNull();
+}
+
+BUILTIN_RETTYPE(VOID)
+BUILTIN_FUNC(@SQLTYPE@_MINMAX_finalize, @OID@)
+BUILTIN_ARGTYPE(__INTERNAL)
+{
+    PrimitiveMinMaxState *s =
+        (PrimitiveMinMaxState *) FMGR_ARG(0).GetVarlenBytes();
+    if (s->m_empty) {
+        return Datum::FromNull();
+    }
+    return Datum::From((@CTYPE@&)s->m_value);
+}
+
+BUILTIN_RETTYPE(VARCHAR)
+BUILTIN_FUNC(@SQLTYPE@_to_VARCHAR, @OID@)
+BUILTIN_ARGTYPE(@SQLTYPE@)
+BUILTIN_OPR(CAST)
+{
+    if (FMGR_ARG(0).isnull()) {
+        return Datum::FromNull();
+    }
+
+    @CTYPE@ val = FMGR_ARG(0).@Datum_Getter@();
+    auto buffer = unique_malloc(STRING_OUTPUT_BUFLEN);
+    auto len = absl::SNPrintF(
+        (char*) buffer.get(), STRING_OUTPUT_BUFLEN, "%" @PRI@, val);
+    // It's safe to pass a buffer that is larger than the declared length to
+    // Datum, which will free the buffer using `free()` without the length.
+    return Datum::FromVarlenBytes(std::move(buffer), (uint32_t) len);
+}
+
+BUILTIN_RETTYPE(@SQLTYPE@)
+BUILTIN_FUNC(VARCHAR_to_@SQLTYPE@, @OID@)
+BUILTIN_ARGTYPE(VARCHAR)
+BUILTIN_OPR(CAST)
+{
+    if (FMGR_ARG(0).isnull()) {
+        return Datum::FromNull();
+    }
+
+    absl::string_view str = varchar_to_string_view(FMGR_ARG(0));
+    @CTYPE@ val;
+    if (!@ABSL::ATO@(str, &val)) {
+        LOG(kError, "cannot cast string \"%s\" as a @SQLTYPE", str);
+    }
+    return Datum::From(val);
+}
+
 }   // namespace taco
 
-#endif      // UTILS_TYPSUPP_@SQLTYPE@_H

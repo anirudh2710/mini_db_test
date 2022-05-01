@@ -8,7 +8,7 @@
 #include "storage/BufferManager.h"
 #include "storage/FileManager.h"
 #include "storage/Table.h"
-#include "query/expr/optypes.h"
+#include "expr/optypes.h"
 #include "utils/builtin_funcs.h"
 #include "utils/fsutils.h"
 
@@ -95,7 +95,16 @@ Database::open(const std::string &path,
         m_catcache = nullptr;
     }
 
+    m_actres_schema = Schema::Create({initoids::TYP_UINT8}, {0}, {false});
+
     m_initialized = true;
+}
+
+Schema*
+Database::actres_schema() const {
+    if (!m_actres_schema->IsLayoutComputed())
+        m_actres_schema->ComputeLayout();
+    return m_actres_schema;
 }
 
 void
@@ -120,6 +129,11 @@ Database::close()
     {
         delete m_file_manager;
         m_file_manager = nullptr;
+    }
+
+    if (m_actres_schema) {
+        delete m_actres_schema;
+        m_actres_schema = nullptr;
     }
 
     m_initialized = false;

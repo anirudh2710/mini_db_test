@@ -9,7 +9,9 @@ list(APPEND SysTableNames
         FunctionArgs
         Operator
         Index
-        IndexColumn)
+        IndexColumn
+        Cast
+        Aggregation)
 list(TRANSFORM SysTableNames APPEND .inc OUTPUT_VARIABLE SysTableIncludeFiles)
 
 find_package(Python3)
@@ -21,6 +23,7 @@ add_custom_command(
         "${GENERATED_SOURCE_DIR}/catalog/systables/Function.dat"
         "${GENERATED_SOURCE_DIR}/catalog/systables/FunctionArgs.dat"
         "${GENERATED_SOURCE_DIR}/catalog/systables/Operator.dat"
+        "${GENERATED_SOURCE_DIR}/catalog/systables/Cast.dat"
         "${GENERATED_SOURCE_DIR}/catalog/systables/builtin_func_table.h"
         "${GENERATED_SOURCE_DIR}/catalog/systables/builtin_func_table.cpp"
     COMMAND "${CMAKE_COMMAND}" -E env
@@ -47,6 +50,7 @@ add_custom_target(FunctionData
         "${GENERATED_SOURCE_DIR}/catalog/systables/Function.dat"
         "${GENERATED_SOURCE_DIR}/catalog/systables/FunctionArgs.dat"
         "${GENERATED_SOURCE_DIR}/catalog/systables/Operator.dat"
+        "${GENERATED_SOURCE_DIR}/catalog/systables/Cast.dat"
         "${GENERATED_SOURCE_DIR}/catalog/systables/builtin_func_table.h"
         "${GENERATED_SOURCE_DIR}/catalog/systables/builtin_func_table.cpp")
 list(APPEND AllGeneratedCppFiles
@@ -118,6 +122,7 @@ add_custom_command(
         "${GENERATED_SOURCE_DIR}/catalog/systables/Column.dat"
         "${GENERATED_SOURCE_DIR}/catalog/systables/Index.dat"
         "${GENERATED_SOURCE_DIR}/catalog/systables/IndexColumn.dat"
+        "${GENERATED_SOURCE_DIR}/catalog/systables/Aggregation.dat"
         "${GENERATED_SOURCE_DIR}/catalog/systables/init.dat"
         "${GENERATED_SOURCE_DIR}/catalog/systables/initoids.h"
         "${GENERATED_SOURCE_DIR}/catalog/systables/CatCacheBase_gen.cpp"
@@ -133,12 +138,17 @@ add_custom_command(
         "${CMAKE_SOURCE_DIR}/include/utils/misc.h"
         ${SysTableIncludeFiles}
         Type.dat
+        "${GENERATED_SOURCE_DIR}/catalog/systables/Function.dat"
+        "${GENERATED_SOURCE_DIR}/catalog/systables/FunctionArgs.dat"
+        "${GENERATED_SOURCE_DIR}/catalog/systables/Operator.dat"
+        "${GENERATED_SOURCE_DIR}/catalog/systables/Cast.dat"
     )
 add_custom_target(init_data
     DEPENDS "${GENERATED_SOURCE_DIR}/catalog/systables/Table.dat"
         "${GENERATED_SOURCE_DIR}/catalog/systables/Column.dat"
         "${GENERATED_SOURCE_DIR}/catalog/systables/Index.dat"
         "${GENERATED_SOURCE_DIR}/catalog/systables/IndexColumn.dat"
+        "${GENERATED_SOURCE_DIR}/catalog/systables/Aggregation.dat"
         "${GENERATED_SOURCE_DIR}/catalog/systables/init.dat"
         "${GENERATED_SOURCE_DIR}/catalog/systables/initoids.h"
         "${GENERATED_SOURCE_DIR}/catalog/systables/CatCacheBase_gen.cpp")

@@ -1,5 +1,6 @@
 # src/utils/CMakeLists.txt
 
+add_subdirectory(tree)
 add_subdirectory(typsupp)
 
 set(UTILS_LIB_SRC
@@ -8,8 +9,10 @@ set(UTILS_LIB_SRC
     misc.cpp
     pgmkdirp.cpp
     zerobuf.cpp
+    pg_datetime.cpp
     Walker.cpp
     TruncatedZipfian.cpp
+    CSVReader.cpp
 )
 
 add_tdb_object_library(utils ${UTILS_LIB_SRC})
@@ -29,5 +32,8 @@ set(FILES_WITH_BUILTIN_FUNCS
     ${CMAKE_SOURCE_DIR}/src/utils/typsupp/varchar.cpp
     ${CMAKE_SOURCE_DIR}/src/utils/typsupp/float.cpp
     ${CMAKE_SOURCE_DIR}/src/utils/typsupp/double.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/typsupp/aggregation.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/typsupp/numeric_casts.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/typsupp/date.cpp
     PARENT_SCOPE)
 

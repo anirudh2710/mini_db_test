@@ -189,7 +189,7 @@ GenerateRandomAlphaNumString(RNG &rng, size_t min_length, size_t max_length) {
 
     std::uniform_int_distribution<uint8_t> unif_ch(0, 63);
     for (size_t i = 0; i < len; ++i) {
-        uint8_t x = unif_len(rng);
+        uint8_t x = unif_ch(rng);
         str.push_back(ch[x]);
     }
     return str;

@@ -164,7 +164,9 @@ namespace taco {
 TEST_F(TEST_SUITE_NAME, TestEmptyTable) {
     TDB_TEST_BEGIN
 
-    ASSERT_NO_ERROR(Table::Initialize(m_tabdesc_a.get()));
+    if (!TableInitialized()) {
+        ASSERT_NO_ERROR(Table::Initialize(m_tabdesc_a.get()));
+    }
     std::unique_ptr<Table> tab;
     ASSERT_NO_ERROR(tab = Table::Create(m_tabdesc_a));
     EXPECT_NO_ERROR(tab.reset());
@@ -187,7 +189,9 @@ TEST_F(TEST_SUITE_NAME, TestEmptyTable) {
 TEST_F(TEST_SUITE_NAME, TestInsertRecord) {
     TDB_TEST_BEGIN
 
-    ASSERT_NO_ERROR(Table::Initialize(m_tabdesc_a.get()));
+    if (!TableInitialized()) {
+        ASSERT_NO_ERROR(Table::Initialize(m_tabdesc_a.get()));
+    }
     std::unique_ptr<Table> tab;
     ASSERT_NO_ERROR(tab = Table::Create(m_tabdesc_a));
 
@@ -236,7 +240,9 @@ TEST_F(TEST_SUITE_NAME, TestInsertRecord) {
 TEST_F(TEST_SUITE_NAME, TestEraseRecord) {
     TDB_TEST_BEGIN
 
-    ASSERT_NO_ERROR(Table::Initialize(m_tabdesc_a.get()));
+    if (!TableInitialized()) {
+        ASSERT_NO_ERROR(Table::Initialize(m_tabdesc_a.get()));
+    }
     std::unique_ptr<Table> tab;
     ASSERT_NO_ERROR(tab = Table::Create(m_tabdesc_a));
 
@@ -336,7 +342,9 @@ TEST_F(TEST_SUITE_NAME, TestEraseRecord) {
 TEST_F(TEST_SUITE_NAME, TestUpdateRecord) {
     TDB_TEST_BEGIN
 
-    ASSERT_NO_ERROR(Table::Initialize(m_tabdesc_a.get()));
+    if (!TableInitialized()) {
+        ASSERT_NO_ERROR(Table::Initialize(m_tabdesc_a.get()));
+    }
     std::unique_ptr<Table> tab;
     ASSERT_NO_ERROR(tab = Table::Create(m_tabdesc_a));
 
@@ -526,7 +534,9 @@ TEST_F(TEST_SUITE_NAME, TestUpdateRecord) {
 TEST_F(TEST_SUITE_NAME, TestStartScanFrom) {
     TDB_TEST_BEGIN
 
-    ASSERT_NO_ERROR(Table::Initialize(m_tabdesc_a.get()));
+    if (!TableInitialized()) {
+        ASSERT_NO_ERROR(Table::Initialize(m_tabdesc_a.get()));
+    }
     std::unique_ptr<Table> tab;
     ASSERT_NO_ERROR(tab = Table::Create(m_tabdesc_a));
 
