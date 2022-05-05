@@ -34,7 +34,9 @@ public:
 private:
     Selection(std::unique_ptr<PlanNode>&& child, std::unique_ptr<ExprNode>&& cond);
 
-    // You can add your own states here.
+    std::unique_ptr<ExprNode> m_selectexpr;
+
+    std::unique_ptr<Schema> m_selectschema;
 
     friend class SelectionState;
 };

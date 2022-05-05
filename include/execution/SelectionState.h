@@ -44,7 +44,8 @@ private:
     SelectionState(const Selection* plan, std::unique_ptr<PlanExecState>&& child);
 
     const Selection* m_plan;
-
+    
+    std::unique_ptr<ExprNode>* m_boolExp;
     // You can add your own state here...
 
     friend class Selection;

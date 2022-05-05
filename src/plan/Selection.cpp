@@ -7,7 +7,7 @@
 namespace taco {
 
 Selection::Selection(std::unique_ptr<PlanNode>&& child, std::unique_ptr<ExprNode>&& cond)
-: PlanNode(TAG(Selection), std::move(child))
+: PlanNode(TAG(Selection), std::move(child)), m_selectexpr(std::move(cond))
 {
     // TODO: implement it
 }
@@ -28,14 +28,13 @@ Selection::node_properties_to_string(std::string& buf, int indent) const {
 
 std::unique_ptr<PlanExecState>
 Selection::create_exec_state() const {
-    // TODO: implement it
-    return nullptr;
+    return absl::WrapUnique(new SelectionState(this,  get_input_as<PlanNode>(0)->create_exec_state()));
 }
 
 const Schema*
 Selection::get_output_schema() const {
     // TODO: implement it
-    return nullptr;
+    return get_input_as<PlanNode>(0)->get_output_schema();
 }
 
 

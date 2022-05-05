@@ -1,12 +1,13 @@
 #include "index/btree/BTreeInternal.h"
+
 #include "storage/VarlenDataPage.h"
-#include "iostream"
+
 namespace taco {
 
 void
 BTreeMetaPageData::Initialize(char *btmeta_buf, PageNumber root_pid) {
     auto btmeta = (BTreeMetaPageData *) btmeta_buf;
-    btmeta->m_root_pid=root_pid;
+    btmeta->m_root_pid = root_pid;
 }
 
 void
@@ -28,61 +29,38 @@ BTree::CreateNewBTreePage(bool isroot,
                           bool isleaf,
                           PageNumber prev_pid,
                           PageNumber next_pid) {
-    char* buf_frame;
-    PageNumber page_no;
-    BufferId bufid;
-
-    page_no = m_file->AllocatePage();
-    
-    bufid = g_bufman->PinPage(page_no,&buf_frame);                                    
-    
-    if(isroot && isleaf)  //when both are true:
-    {
-        BTreePageHeaderData::Initialize(buf_frame, BTREE_PAGE_ISROOT|BTREE_PAGE_ISLEAF, prev_pid, next_pid);
-    }
-    else if(isroot && !isleaf)  //when isleaf if false:
-    {
-        BTreePageHeaderData::Initialize(buf_frame, BTREE_PAGE_ISROOT, prev_pid, next_pid);
-        }
-    else if(!isroot && isleaf)    //when isroot is false but isleaf is true
-    { 
-        BTreePageHeaderData::Initialize(buf_frame, BTREE_PAGE_ISLEAF, prev_pid, next_pid);
-    }
-    else //when both are false
-    {
-        BTreePageHeaderData::Initialize(buf_frame, BTREE_PAGE_ISROOT, prev_pid, next_pid);
-    }
-     
-    return bufid;
+    PageNumber newpg_pid = m_file->AllocatePage();
+    char *newpg_buf;
+    BufferId newpg_bufid = g_bufman->PinPage(newpg_pid, &newpg_buf);
+    uint16_t flags = 0;
+    if (isroot)
+        flags |= BTREE_PAGE_ISROOT;
+    if (isleaf)
+        flags |= BTREE_PAGE_ISLEAF;
+    BTreePageHeaderData::Initialize(newpg_buf, flags,
+                                    prev_pid, next_pid);
+    return newpg_bufid;
 }
-
 
 BufferId
 BTree::GetBTreeMetaPage() {
-    PageNumber page_no; 
-    char *buf_frame; 
-
-
-    page_no = m_file->GetFirstPageNumber(); 
-    BufferId bufid =g_bufman->PinPage(page_no, &buf_frame);
-    
-    return bufid;
+    PageNumber metapg_pid = m_file->GetFirstPageNumber();
+    char *meta_pgbuf;
+    return g_bufman->PinPage(metapg_pid, &meta_pgbuf);
 }
 
 void
 BTree::CreateLeafRecord(const IndexKey *key,
                         const RecordId &recid,
                         maxaligned_char_buf &recbuf) {
-
-    //resizing the recbuf       
-    BTreeLeafRecordHeaderData* bheader;                 
-    recbuf.resize(sizeof(BTreeLeafRecordHeaderData));
-
-    bheader = (BTreeLeafRecordHeaderData*)recbuf.data();
-    
-    bheader->m_recid = recid;
-
-    this->GetKeySchema()->WritePayloadToBuffer(key->ToNullableDatumVector(), recbuf);
+    recbuf.resize(BTreeLeafRecordHeaderSize, 0);
+    auto rechdr = (BTreeLeafRecordHeaderData *) recbuf.data();
+    rechdr->m_recid = recid;
+    if (-1 ==
+        GetKeySchema()->WritePayloadToBuffer(key->ToNullableDatumVector(),
+                                             recbuf)) {
+        LOG(kError, "index key is too long");
+    }
 }
 
 void
@@ -90,30 +68,31 @@ BTree::CreateInternalRecord(const Record &child_recbuf,
                             PageNumber child_pid,
                             bool child_isleaf,
                             maxaligned_char_buf &recbuf) {
-    //resizing the recbuf   
-    BTreeLeafRecordHeaderData* bleafhead; 
-    BTreeInternalRecordHeaderData* inthead;                          
-    recbuf.resize(sizeof(BTreeInternalRecordHeaderData));
+    FieldOffset reclen = child_isleaf ?
+        (child_recbuf.GetLength() - BTreeLeafRecordHeaderSize +
+         BTreeInternalRecordHeaderSize) :
+        child_recbuf.GetLength();
+    recbuf.resize(reclen);
+    auto rechdr = (BTreeInternalRecordHeaderData*) recbuf.data();
+    rechdr->m_child_pid = child_pid;
 
-    BTreeInternalRecordHeaderData* bheader = (BTreeInternalRecordHeaderData*)recbuf.data();
-    
-    bheader->m_child_pid = child_pid;
-
-    const char *buffer = child_recbuf.GetData();
-    if(child_isleaf)
-    {
-        bleafhead = (BTreeLeafRecordHeaderData*)buffer;
-        bheader->m_heap_recid = bleafhead->m_recid;
-        std::memcpy(recbuf.data()+sizeof(BTreeInternalRecordHeaderData),bleafhead->GetPayload(),sizeof(bleafhead->GetPayload()));
-        recbuf.resize(sizeof(BTreeInternalRecordHeaderData)+child_recbuf.GetLength()-sizeof(BTreeLeafRecordHeaderData));
+    const char *payload;
+    FieldOffset payload_len;
+    if (child_isleaf) {
+        auto child_rechdr = (BTreeLeafRecordHeaderData*) child_recbuf.GetData();
+        rechdr->m_heap_recid = child_rechdr->m_recid;
+        payload = child_rechdr->GetPayload();
+        payload_len = child_recbuf.GetLength()
+            - BTreeLeafRecordHeaderSize;
+    } else {
+        auto child_rechdr =
+            (BTreeInternalRecordHeaderData*) child_recbuf.GetData();
+        rechdr->m_heap_recid = child_rechdr->m_heap_recid;
+        payload = child_rechdr->GetPayload();
+        payload_len = child_recbuf.GetLength()
+            - BTreeInternalRecordHeaderSize;
     }
-    else
-    {
-        inthead = (BTreeInternalRecordHeaderData*)buffer;
-        bheader->m_heap_recid = inthead->m_heap_recid;
-        std::memmove(recbuf.data()+sizeof(BTreeInternalRecordHeaderData),inthead->GetPayload(),sizeof(inthead->GetPayload()));
-        recbuf.resize(child_recbuf.GetLength());
-    }
+    memcpy(rechdr->GetPayload(), payload, payload_len);
 }
 
 }   // namespace taco

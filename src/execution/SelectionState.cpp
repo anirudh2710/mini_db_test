@@ -9,17 +9,36 @@ SelectionState::SelectionState(const Selection* plan, std::unique_ptr<PlanExecSt
 }
 
 SelectionState::~SelectionState() {
-    // TODO: implement it
+    if (m_initialized)
+    
+    {
+        LOG(kWarning, "not closed ");
+    }
 }
 
 void
 SelectionState::init() {
     // TODO: implement it
+
+    get_child(0)->init();
+    m_initialized = true;
 }
 
 bool
 SelectionState::next_tuple() {
-    // TODO: implement it
+    
+    if (get_child(0)->next_tuple()) 
+    
+    {
+        if(m_plan->m_selectexpr->Eval( get_child(0)->get_record()).GetBool())
+        {
+            return true;
+        }
+        else 
+        {
+            return SelectionState::next_tuple();
+        }
+    }
     return false;
 }
 
@@ -31,29 +50,37 @@ SelectionState::node_properties_to_string(std::string& buf, int indent) const {
 std::vector<NullableDatumRef>
 SelectionState::get_record() {
     // TODO: implement it
-    return {};
+    return get_child(0)->get_record();
 }
 
 
 void
 SelectionState::close() {
     // TODO: implement it
+    m_initialized = false;
 }
 
 void
 SelectionState::rewind() {
     // TODO: implement it
+    get_child(0)->rewind();
 }
 
 Datum
 SelectionState::save_position() const {
     // TODO: implement it
-    return Datum::FromNull();
+    return get_child(0)->save_position();
 }
 
 bool
 SelectionState::rewind(DatumRef saved_position) {
-    // TODO: implement it
+    
+    if (get_child(0)->rewind(saved_position))
+    {
+        m_plan->m_selectexpr->Eval(get_child(0)->get_record()).GetBool();
+        return true;
+    }
+    
     return false;
 }
 

@@ -9,85 +9,92 @@ BTree::BTreeTupleCompare(const IndexKey *key,
                          const RecordId &recid,
                          const char *recbuf,
                          bool isleaf) const {
-    RecordId rec_id;
-    char* payload;
-    int temp;
-    
-    if(!isleaf)
-    {
-        BTreeInternalRecordHeaderData* head = (BTreeInternalRecordHeaderData*)recbuf;       
-        payload = head->GetPayload();
-        rec_id = head->m_heap_recid;
-        
+    // compare the actual keys
+    const char *rec_payload = BTreeRecordGetPayload(recbuf, isleaf);
+    int cmpres = TupleCompare(key, rec_payload, GetKeySchema(),
+                              m_lt_funcs.data(), m_eq_funcs.data());
+    if (cmpres != 0) {
+        return cmpres;
     }
-    else{
-        BTreeLeafRecordHeaderData* lhead = (BTreeLeafRecordHeaderData*)recbuf;
 
-        payload = lhead->GetPayload();
-        rec_id = lhead->m_recid; 
+    // TupleCompare() may return 0 when key is a prefix of the fields in
+    // recbuf.  A key with fewer fields than the key schema does is smaller
+    // than any key that is a prefix of it. In this case, the caller should not
+    // have specified a valid record id (because all items on the leaf page
+    // should have complete keys).
+    const FieldId nkeys = key->GetNumKeys();
+    const FieldId idxncols = GetKeySchema()->GetNumFields();
+    if (nkeys < idxncols) {
+        ASSERT(!recid.IsValid());
+        return -1;
     }
-    temp = TupleCompare(key,payload, this->GetKeySchema(), m_lt_funcs.data(), m_eq_funcs.data());
-    if(temp==0){
-        if(this->GetKeySchema()->GetNumFields() > key->GetNumKeys()) 
-        {
-            return -1;
-        }
-        if(!recid.IsValid())
-        {
-            return -1;
-        } 
-        
-        if(rec_id==recid)  
-        {
-            return 0;}
-        else if (rec_id>recid) 
-        {
-            return -1;}
-        else
-        {
-            return 1;
-        }
+
+    // Number of keys matches. An invalid recid is always considered as smaller
+    // than all valid recid. Otherwise, we may need to compare the recid.
+    if (!recid.IsValid()) {
+        return -1;
     }
-    return temp;
+    const RecordId &heap_recid =
+        BTreeRecordGetHeapRecordId(recbuf, isleaf);
+    if (recid == heap_recid) {
+        return 0;
+    }
+    return (recid < heap_recid) ? -1 : 1;
 }
-
-
-BufferId
-BTree::FindLeafPage(const IndexKey *key,
-                    const RecordId &recid,
-                    std::vector<PathItem> *p_search_path) {
-
-    ScopedBufferId metabuffer;
-    char *bufer;
-    PageNumber page_no; 
-
-    metabuffer = GetBTreeMetaPage();
-    BTreeMetaPageData *leaf =
-        ((BTreeMetaPageData *) g_bufman->GetBuffer(metabuffer));
-    page_no = leaf->m_root_pid;
-    g_bufman->UnpinPage(metabuffer);
-
-    if (p_search_path)
-    {
-        p_search_path->clear();
-    }
-
-    BufferId buf_id = g_bufman->PinPage(page_no, &bufer);
-
-    return FindLeafPage(buf_id, key, recid, p_search_path);
-}
-
 
 SlotId
 BTree::BinarySearchOnPage(char *buf,
                           const IndexKey *key,
                           const RecordId &recid) {
-    VarlenDataPage varlen(buf);
-    BTreePageHeaderData *head = (BTreePageHeaderData *) varlen.GetUserData();
+    VarlenDataPage pg(buf);
+    auto hdr = (BTreePageHeaderData *) pg.GetUserData();
+    bool isleaf = hdr->IsLeafPage();
 
-    
-    //return Search(key,recid, head-> IsLeafPage(), &varlen, varlen.GetMinSlotId(), varlen.GetMaxSlotId())
-    
+    // find the first key > (key, recid)
+    // invariant: for i < low: (k_i, recid_i) <= (key, recid);
+    // for i >= high: (k_i, recid_i) > (key, recid).
+    SlotId low = pg.GetMinSlotId();
+    SlotId high = pg.GetMaxSlotId() + 1;
+    while (low != high) {
+        SlotId mid = (low + high) >> 1;
+
+        int res;
+        if (!isleaf && mid == pg.GetMinSlotId()) {
+            // the first index record on an internal page does not store a key
+            // and is always assumed to be -infinity
+            res = 1;
+        } else {
+            char *recbuf = pg.GetRecordBuffer(mid, nullptr);
+            res = BTreeTupleCompare(key, recid, recbuf, isleaf);
+        }
+
+        if (res >= 0) {
+            low = mid + 1;
+        } else {
+            high = mid;
+        }
+    }
+
+    // we're asking for the last one <= (key, recid), hence -1
+    return low - 1;
+}
+
+BufferId
+BTree::FindLeafPage(const IndexKey *key,
+                    const RecordId &recid,
+                    std::vector<PathItem> *p_search_path) {
+    ScopedBufferId meta_bufid = GetBTreeMetaPage();
+    BTreeMetaPageData *meta =
+        ((BTreeMetaPageData *) g_bufman->GetBuffer(meta_bufid));
+    PageNumber pid = meta->m_root_pid;
+    g_bufman->UnpinPage(meta_bufid);
+
+    if (p_search_path)
+        p_search_path->clear();
+
+    char *buf;
+    BufferId bufid = g_bufman->PinPage(pid, &buf);
+    return FindLeafPage(bufid, key, recid, p_search_path);
 }
 
 BufferId
@@ -95,43 +102,40 @@ BTree::FindLeafPage(BufferId bufid,
                     const IndexKey *key,
                     const RecordId &recid,
                     std::vector<PathItem> *p_search_path) {
+    ScopedBufferId bufid_(bufid);
 
-    VarlenDataPage pg(g_bufman->GetBuffer(bufid));
-    BTreePageHeaderData *head = (BTreePageHeaderData *) pg.GetUserData();
-    if(head->IsLeafPage()) 
-    {
-        return bufid;
+    char *buf = g_bufman->GetBuffer(bufid_);
+    VarlenDataPage pg(buf);
+    auto hdr = (BTreePageHeaderData *) pg.GetUserData();
+
+    // this is a leaf page, just return the buffer
+    if (hdr->IsLeafPage()) {
+        return bufid_.Release();
     }
 
-    else
-    {
-        BTreeInternalRecordHeaderData *rec_head;
-        char* buffer = g_bufman->GetBuffer(bufid);
-        SlotId sid;
-        if(key==nullptr)
-        {
-            sid = MinSlotId;
-        } 
-        else
-        {
-            sid = BinarySearchOnPage(buffer, key, recid);
-        }
-
-        Record rec = pg.GetRecord(sid);
-        rec_head = (BTreeInternalRecordHeaderData*)(rec.GetData());
-        rec.GetRecordId().pid=g_bufman->GetPageNumber(bufid);
-
-        if(p_search_path!=NULL)
-        {
-            p_search_path->push_back(rec.GetRecordId());
-        }
-
-        g_bufman->UnpinPage(bufid);
-        BufferId bufid = g_bufman->PinPage(rec_head->m_child_pid, &buffer);
-
-        return FindLeafPage(bufid, key, recid, p_search_path);
+    SlotId sid;
+    if (!key) {
+        // the caller is asking for the left-most page
+        sid = pg.GetMinSlotId();
+    } else {
+        // binary search for the insertion point
+        sid = BinarySearchOnPage(buf, key, recid);
     }
-    return INVALID_BUFID;
+    ASSERT(pg.IsOccupied(sid));
+
+    // read and follow the child page pointer at slot sid
+    auto recbuf =
+        (BTreeInternalRecordHeaderData *) pg.GetRecordBuffer(sid, nullptr);
+    PageNumber cpid = recbuf->m_child_pid;
+
+    // push the parent page info to serach_path before we search the next level
+    PageNumber pid = g_bufman->GetPageNumber(bufid_);
+    if (p_search_path)
+        p_search_path->emplace_back(RecordId{pid, sid});
+
+    g_bufman->UnpinPage(bufid_);
+    bufid_ = g_bufman->PinPage(cpid, &buf);
+    return FindLeafPage(bufid_.Release(), key, recid, p_search_path);
 }
 
 
