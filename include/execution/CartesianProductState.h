@@ -44,9 +44,13 @@ private:
                           std::unique_ptr<PlanExecState>&& right);
 
     const CartesianProduct* m_plan;
-
     // You can add your own states here.
 
+    std::vector<NullableDatumRef>   m_datumref;
+
+
+    size_t m_iteration = 0;
+    
     friend class CartesianProduct;
 };
 

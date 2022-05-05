@@ -9,43 +9,92 @@ CartesianProductState::CartesianProductState
 : PlanExecState(TAG(CartesianProductState), std::move(left), std::move(right))
 , m_plan(plan)
 {
-    // TODO: implement it
+    m_iteration=0;
 }
 
 CartesianProductState::~CartesianProductState() {
-    // TODO: implement it
+    if (m_initialized) {
+        LOG(kWarning, "not closed upon destruction");
+    }
 }
 
 void
 CartesianProductState::init() {
     // TODO: implement it
+    get_child(0)->init();
+    
+    
+    get_child(1)->init();
+
+
+    while(get_child(0)->next_tuple())
+    {
+        std::vector<NullableDatumRef> left_rec = get_child(0)->get_record();
+
+        get_child(1)->rewind();
+
+        while(get_child(1)->next_tuple())
+        {
+            std::vector<NullableDatumRef> val;
+            std::vector<NullableDatumRef> right_rec = get_child(1)->get_record();
+            val.insert(val.end(), left_rec.begin(), left_rec.end()); 
+            val.insert(val.end(), right_rec.begin(), right_rec.end()); 
+
+            size_t count=0;
+            while(count < val.size())
+            {
+                m_datumref.emplace_back(NullableDatumRef(val[count]));
+                count++;
+            }
+        }
+    }
 }
 
 bool
 CartesianProductState::next_tuple() {
     // TODO: implement it
-    return false;
+    m_iteration = m_iteration + m_plan->m_schemacount;
+    auto ret_val = ((size_t)(m_iteration - m_plan->m_schemacount)) < m_datumref.size();
+    return ret_val;
 }
 
 void
 CartesianProductState::node_properties_to_string(std::string& buf, int indent) const {
     // For debugging purpose, you can implement it base on your need.
+    
 }
 
 std::vector<NullableDatumRef>
 CartesianProductState::get_record() {
     // TODO: implement it
-    return {};
+    std::vector<NullableDatumRef> value;
+
+    value.reserve( m_plan->m_schemacount);
+    int count = (m_iteration -  m_plan->m_schemacount);
+
+    
+    while (count < m_iteration)
+    {
+        value.emplace_back(NullableDatumRef(m_datumref[count]));
+        count++;
+    }
+    return value;
 }
 
 void
 CartesianProductState::close() {
     // TODO: implement it
+    get_child(0)->close();
+
+    get_child(1)->close();
+
+    m_initialized = false;
 }
 
 void
 CartesianProductState::rewind() {
     // TODO: implement it
+    m_iteration=0;
 }
 
 Datum

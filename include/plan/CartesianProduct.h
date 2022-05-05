@@ -30,7 +30,7 @@ private:
     CartesianProduct(std::unique_ptr<PlanNode>&& left,
                      std::unique_ptr<PlanNode>&& right);
 
-    // You can add your own states here.
+    size_t m_schemacount = 0;
 
     friend class CartesianProductState;
 };
