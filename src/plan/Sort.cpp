@@ -43,7 +43,7 @@ Sort::node_properties_to_string(std::string& buf, int indent) const {
 std::unique_ptr<PlanExecState>
 Sort::create_exec_state() const {
     // TODO: implement it
-    return nullptr;
+    return absl::WrapUnique(new SortState(this, get_input_as<PlanNode>(0)->create_exec_state()));
 }
 
 const Schema*
