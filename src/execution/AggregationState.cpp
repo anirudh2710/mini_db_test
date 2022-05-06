@@ -1,3 +1,4 @@
+using namespace std;
 #include "execution/AggregationState.h"
 #include "utils/builtin_funcs.h"
 
@@ -23,29 +24,85 @@ AggregationState::node_properties_to_string(std::string& buf, int indent) const 
 
 void
 AggregationState::init() {
-    // TODO: implement it
+
+    get_child(0)->init();
+
+    m_check = false;
+
+    m_initialized = true;
 }
 
 bool
 AggregationState::next_tuple() {
-    // TODO: implement it
+    if(!m_check){
+
+        m_datum.clear();
+        size_t count = 0;
+
+        while(count < m_plan->m_aggfun.size())
+        {
+            m_datum.emplace_back(FunctionCall(FindBuiltinFunction(m_plan->m_aggstart[count])));
+            ++count;
+        }
+
+        while (get_child(0)->next_tuple()) {
+            vector<NullableDatumRef> child = get_child(0)->get_record();
+            size_t count_1 = 0;
+            while (count_1< m_plan->m_aggfun.size()) 
+            {
+                FunctionCall( FindBuiltinFunction(m_plan->m_aggfun[count_1]), m_datum[count_1], m_plan->m_selectexpr[count_1]->Eval(child));
+
+                ++count_1;
+            }
+        } 
+        size_t count_2 = 0;
+        while(count_2 < m_plan->m_aggfun.size())
+        {
+            m_datum[count_2] = FunctionCall(FindBuiltinFunction(m_plan->m_aggend[count_2]), m_datum[count_2]);
+
+            ++count_2;
+        }
+        m_check = true;
+
+        return true;
+    }
     return false;
 }
 
 std::vector<NullableDatumRef>
 AggregationState::get_record() {
     // TODO: implement it
-    return {};
+    size_t funcid = 0;
+    std::vector<NullableDatumRef> datum;
+
+
+    datum.reserve(m_datum.size());
+    
+    while(funcid < m_datum.size()) 
+    {
+        datum.emplace_back(NullableDatumRef(m_datum[funcid]));
+
+        ++funcid;
+    }
+    return datum;
 }
 
 void
 AggregationState::close() {
     // TODO: implement it
+    get_child(0)->close();
+
+    m_initialized = false;
+
+    m_check = false;
 }
 
 void
 AggregationState::rewind() {
     // TODO: implement it
+    get_child(0)->rewind();
+
+    m_check = false;
 }
 
 Datum

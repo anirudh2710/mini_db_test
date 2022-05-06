@@ -40,8 +40,15 @@ private:
     IndexScan(std::shared_ptr<const IndexDesc> idxdesc,
               const IndexKey* low, bool lower_isstrict,
               const IndexKey* high, bool higher_isstrict);
+              
+    const Schema* m_selectschema;
+    bool m_index_lowerstrict, m_index_higherstrict;
 
-    // TODO you may add any class members here
+    const IndexKey* m_indexlower;
+    const IndexKey* m_indexhigher;
+
+    std::shared_ptr<const IndexDesc> m_index;
+    std::shared_ptr<const TableDesc> m_indextabledesc;
 
     friend class IndexScanState;
 };

@@ -1,14 +1,16 @@
 #include "execution/IndexScanState.h"
 #include "storage/VarlenDataPage.h"
+#include "index/btree/BTreeInternal.h"
 
 namespace taco {
 
 IndexScanState::IndexScanState(const IndexScan* plan,
                                std::unique_ptr<Index> idx)
 : PlanExecState(TAG(IndexScan))
-, m_plan(plan)
+, m_plan(plan) , m_index(std::move(idx)), m_indexval(-1)
 {
-    // TODO: implement it
+    indexiterator = m_index->StartScan(m_plan-> m_indexlower, m_plan->m_index_lowerstrict, m_plan->m_indexhigher, m_plan->m_index_higherstrict);
+
 }
 
 IndexScanState::~IndexScanState() {
@@ -23,28 +25,52 @@ IndexScanState::node_properties_to_string(std::string& buf, int indent) const {
 void
 IndexScanState::init() {
     // TODO: implement it
+    ASSERT(!m_initialized);
+    //making intialized true 
+    m_initialized = true;
+
+    //making index value to be -1
+    m_indexval = -1;
 }
 
 bool
 IndexScanState::next_tuple() {
-    // TODO: implement it
+    //checking indexiterator 
+    if (indexiterator->Next()){return true;}
+
     return false;
 }
 
 std::vector<NullableDatumRef>
 IndexScanState::get_record() {
-    // TODO: implement it
-    return {};
+    std::vector<NullableDatumRef> recordval;
+
+    recordval.clear();recordval.reserve(2);
+    //to access the record value 
+    std::vector<Datum> datum = m_plan->m_index->GetKeySchema()->DissemblePayload(indexiterator->GetCurrentItem().GetData());
+    
+    for (auto& x: datum)
+    {
+        recordval.emplace_back(x);
+    }
+
+    recordval.emplace_back(Datum::FromNull());
+    //we return the record value thats stored 
+    return recordval;
 }
 
 void
 IndexScanState::close() {
-    // TODO: implement it
+    m_initialized = false;
 }
 
 void
 IndexScanState::rewind() {
-    // TODO: implement it
+    //first we call the endscan func to pause
+    indexiterator->EndScan();
+    
+    //and start the scan again
+    indexiterator = m_index->StartScan(m_plan-> m_indexlower, m_plan->m_index_lowerstrict, m_plan->m_indexhigher, m_plan->m_index_higherstrict);
 }
 
 Datum

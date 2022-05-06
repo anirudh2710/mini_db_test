@@ -55,6 +55,15 @@ private:
 
     // You can add your own states here.
 
+    std::unique_ptr<Schema> m_selectschema;
+
+    std::vector<std::unique_ptr<ExprNode>> m_selectexpr;
+
+    
+
+
+    std::vector<Oid> m_aggstart, m_aggend, m_aggtypes, m_aggfun;
+
     friend class AggregationState;
 };
 

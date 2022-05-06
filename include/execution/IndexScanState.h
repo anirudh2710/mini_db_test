@@ -48,10 +48,13 @@ public:
 private:
     IndexScanState(const IndexScan* plan,
                    std::unique_ptr<Index> idx);
+    int64_t m_indexval;
 
+    std::unique_ptr<Index> m_index;
+    std::unique_ptr<Index::Iterator> indexiterator;
     const IndexScan* m_plan;
-
-    // You can add your own states here.
+    
+    
 
     friend class IndexScan;
 };

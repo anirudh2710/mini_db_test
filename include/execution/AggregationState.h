@@ -44,8 +44,9 @@ private:
                      std::unique_ptr<PlanExecState>&& child);
 
     const Aggregation* m_plan;
-
-    // You can add your own states here.
+    std::vector<Datum> m_datum;
+    bool m_check = false;
+    
 
     friend class Aggregation;
 };
