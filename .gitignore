@@ -5,3 +5,7 @@
 .DS_Store
 /*.tar.xz
 /data/preloaded_btree
+/data/tpch_s1.tar.xz
+/data/tpch_s1
+/data/tpch_s01.tar.xz
+/data/tpch_s01

@@ -12,6 +12,8 @@ set(PLAN_LIB_SRC
     Aggregation.cpp
     Sort.cpp
     Limit.cpp
+    MergeJoin.cpp
+    IndexNestedLoop.cpp
 )
 
 add_tdb_object_library(plan ${PLAN_LIB_SRC})

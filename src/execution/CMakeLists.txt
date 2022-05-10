@@ -12,6 +12,8 @@ set(EXECUTION_LIB_SRC
     AggregationState.cpp
     SortState.cpp
     LimitState.cpp
+    MergeJoinState.cpp
+    IndexNestedLoopState.cpp
 )
 
 add_tdb_object_library(execution ${EXECUTION_LIB_SRC})
